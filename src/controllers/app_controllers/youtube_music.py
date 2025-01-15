@@ -65,38 +65,37 @@ class YouTubeMusicController(BaseController):
 
             time.sleep(3)
 
-            # Click YouTube Music element (which includes the three dots functionality)
-            youtube_element = self.device.xpath(
-                '//*[@resource-id="com.google.android.apps.youtube.music:id/elements_container"]'
-                '/android.view.ViewGroup[1]/android.view.ViewGroup[5]/android.widget.ImageView[1]'
-            )
-            if not youtube_element.exists:
-                logger.error("YouTube Music tree dots menu element not found")
-                return False
+            # Try to find the three dots menu using both possible XPaths
+            menu_xpath_1 = ('//*[@resource-id="com.google.android.apps.youtube.music:id/elements_container"]'
+                            '/android.view.ViewGroup[1]/android.view.ViewGroup[6]/android.widget.ImageView[1]')
+            menu_xpath_2 = ('//*[@resource-id="com.google.android.apps.youtube.music:id/elements_container"]'
+                            '/android.view.ViewGroup[1]/android.view.ViewGroup[6]/android.widget.ImageView[2]')
 
-            youtube_element.click()
-            logger.info("Clicked YouTube Music element")
-            time.sleep(3)  # Wait for menu to appear
+            menu_element = self.device.xpath(menu_xpath_1)
+            if not menu_element.exists:
+                menu_element = self.device.xpath(menu_xpath_2)
+                if not menu_element.exists:
+                    logger.error("Three dots menu not found with either XPath")
+                    return False
 
-            # Look for shuffle button in the menu
-            shuffle_element = self.device.xpath(
-                '//*[@resource-id="com.google.android.apps.youtube.music:id/bottom_sheet_list"]'
-                '/android.widget.FrameLayout[1]'
-            )
+            menu_element.click()
+            logger.info("Clicked three dots menu")
+            time.sleep(2)
 
+            # Try to find shuffle button by text
+            shuffle_button = self.device(text="Shuffle play", packageName=self.package_name)
+            if shuffle_button.exists:
+                shuffle_button.click()
+                logger.info("Clicked Shuffle play using text selector")
+                return True
+
+            # Try to find shuffle button by XPath
+            shuffle_xpath = ('//*[@resource-id="com.google.android.apps.youtube.music:id/bottom_sheet_list"]'
+                             '/android.widget.FrameLayout[1]')
+            shuffle_element = self.device.xpath(shuffle_xpath)
             if shuffle_element.exists:
                 shuffle_element.click()
                 logger.info("Clicked shuffle button using XPath")
-                time.sleep(2)
-                return True
-
-            # Second attempt using text
-            logger.info("Trying to find shuffle button by text")
-            shuffle_element = self.device(text="Shuffle play", packageName=self.package_name)
-            if shuffle_element.exists:
-                shuffle_element.click()
-                logger.info("Clicked shuffle button using text")
-                time.sleep(2)
                 return True
 
             logger.error("Shuffle button not found using any method")
