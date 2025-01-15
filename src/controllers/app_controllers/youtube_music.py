@@ -90,14 +90,22 @@ class YouTubeMusicController(BaseController):
     def next_track(self) -> bool:
         """Skip to next track."""
         try:
-            next_button = self.device.xpath(
-                '//android.widget.ImageButton[@content-desc="Next track"]'
+            next_button = self.device(
+                resourceId="com.google.android.apps.youtube.music:id/player_control_next_button"
             )
             if next_button.exists:
                 next_button.click()
-                logger.info("Skipped to next track")
+                logger.info("Clicked next track button using resource ID")
                 return True
-            return False
+
+            # Fallback to coordinates
+            screen_info = self.device.window_size()
+            next_x = int(0.722 * screen_info[0])
+            next_y = int(0.807 * screen_info[1])
+            self.device.click(next_x, next_y)
+            logger.info(f"Clicked next track using coordinates at: {next_x}, {next_y}")
+            return True
+
         except Exception as e:
             logger.error(f"Error skipping to next track: {e}")
             return False
@@ -105,14 +113,22 @@ class YouTubeMusicController(BaseController):
     def previous_track(self) -> bool:
         """Go to previous track."""
         try:
-            prev_button = self.device.xpath(
-                '//android.widget.ImageButton[@content-desc="Previous track"]'
+            prev_button = self.device(
+                resourceId="com.google.android.apps.youtube.music:id/player_control_previous_button"
             )
             if prev_button.exists:
                 prev_button.click()
-                logger.info("Went to previous track")
+                logger.info("Clicked previous track button using resource ID")
                 return True
-            return False
+
+            # Fallback to coordinates
+            screen_info = self.device.window_size()
+            prev_x = int(0.27 * screen_info[0])
+            prev_y = int(0.789 * screen_info[1])
+            self.device.click(prev_x, prev_y)
+            logger.info(f"Clicked previous track using coordinates at: {prev_x}, {prev_y}")
+            return True
+
         except Exception as e:
             logger.error(f"Error going to previous track: {e}")
             return False
