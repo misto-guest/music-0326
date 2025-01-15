@@ -3,7 +3,7 @@
 import random
 import threading
 import time
-from typing import Optional
+from typing import Optional, Tuple, Callable
 from src.utils.logging_utils import setup_logger
 from src.controllers.app_controllers.youtube_music import YouTubeMusicController
 
@@ -15,17 +15,22 @@ class MusicAutomation:
         self.controller = controller
         self.running = False
         self.automation_thread: Optional[threading.Thread] = None
+        self.last_isoclipboard_time = 0
 
-    def get_random_delay(self) -> int:
-        """Get random delay between 22-30 minutes in seconds."""
+    def get_isoclipboard_delay(self) -> int:
+        """Get random delay between 22-30 minutes in seconds for IsoClipboard."""
         return random.randint(22 * 60, 30 * 60)
 
-    def get_random_action(self) -> tuple:
-        """Get random action to perform."""
+    def get_music_control_delay(self) -> int:
+        """Get random delay between 45 seconds and 6 minutes for music controls."""
+        return random.randint(45, 6 * 60)
+
+    def get_random_music_action(self) -> tuple[Callable, str]:
+        """Get random music control action to perform."""
         actions = [
-            (self.controller.handle_isoclipboard, "IsoClipboard handling"),
             (self.controller.next_track, "Next track"),
             (self.controller.like_current_song, "Like song"),
+            (self.controller.previous_track, "Previous track")
         ]
         return random.choice(actions)
 
@@ -37,32 +42,40 @@ class MusicAutomation:
                 logger.error("Failed to complete initial setup")
                 return False
             logger.info("Initial setup completed successfully")
+            self.last_isoclipboard_time = time.time()
             return True
         except Exception as e:
             logger.error(f"Error in initial setup: {e}")
             return False
 
     def perform_random_automation(self):
-        """Perform random automation actions."""
+        """Perform random automation actions with different timing patterns."""
         while self.running:
             try:
-                delay = self.get_random_delay()
-                next_action_time = time.time() + delay
+                current_time = time.time()
+                time_since_isoclipboard = current_time - self.last_isoclipboard_time
 
-                logger.info(f"Next automation scheduled in {delay // 60} minutes "
-                            f"({time.strftime('%H:%M:%S', time.localtime(next_action_time))})")
+                # Check if it's time for IsoClipboard action
+                if time_since_isoclipboard >= self.get_isoclipboard_delay():
+                    logger.info("Performing IsoClipboard handling")
+                    if self.controller.handle_isoclipboard():
+                        logger.info("Successfully performed IsoClipboard handling")
+                        self.last_isoclipboard_time = current_time
+                    else:
+                        logger.error("Failed to perform IsoClipboard handling")
 
-                time.sleep(delay)
+                # Perform random music control action
+                music_delay = self.get_music_control_delay()
+                logger.info(f"Waiting {music_delay} seconds before next music control action")
+                time.sleep(music_delay)
 
-                action, action_name = self.get_random_action()
+                action, action_name = self.get_random_music_action()
                 logger.info(f"Performing action: {action_name}")
 
                 if action():
                     logger.info(f"Successfully performed {action_name}")
                 else:
                     logger.error(f"Failed to perform {action_name}")
-
-                time.sleep(random.randint(2, 5))
 
             except Exception as e:
                 logger.error(f"Error in automation: {e}")
