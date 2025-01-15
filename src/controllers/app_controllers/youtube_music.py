@@ -20,6 +20,41 @@ class YouTubeMusicController(BaseController):
         self.app_name = YouTubeMusicConfig.APP_NAME
         self.isoclipboard_package = IsoClipboardConfig.PACKAGE_NAME
 
+    def check_internet_connection(self, max_retries: int = 5, delay: int = 2) -> bool:
+        for attempt in range(max_retries):
+            try:
+                # Method 1: Check network connection status
+                net_status = self.device.shell('settings get global airplane_mode_on').strip()
+                wifi_status = self.device.shell('settings get global wifi_on').strip()
+                mobile_status = self.device.shell('settings get global mobile_data').strip()
+
+                logger.info(f"Network status - Airplane: {net_status}, WiFi: {wifi_status}, Mobile: {mobile_status}")
+
+                # Method 2: Try wget to Google
+                wget_result = self.device.shell('wget -q --spider http://google.com')
+                logger.info(f"Wget result: {wget_result}")
+
+                # Method 3: Original ping method
+                ping_result = self.device.shell('ping -c 1 -W 1 8.8.8.8')
+                logger.info(f"Ping result: {ping_result}")
+
+                # Check results
+                if ('bytes from 8.8.8.8' in ping_result or
+                        '1 packets transmitted, 1 received' in ping_result or
+                        wget_result == '' or  # Empty result means success for wget
+                        (wifi_status == '1' or mobile_status == '1')):
+                    logger.info("Internet connection available")
+                    return True
+
+                logger.warning(f"No internet connection (attempt {attempt + 1}/{max_retries})")
+                time.sleep(delay)
+
+            except Exception as e:
+                logger.error(f"Error checking internet connection: {e}")
+                time.sleep(delay)
+
+        return False
+
     def handle_isoclipboard(self) -> bool:
         """Handle IsoClipboard interaction."""
         try:
@@ -27,16 +62,21 @@ class YouTubeMusicController(BaseController):
             self.device.app_start(self.isoclipboard_package)
             time.sleep(2)
 
-            # Click FETCH button
             fetch_button = self.device(resourceId=f"{self.isoclipboard_package}:id/buttonFetchUrl4")
             if not fetch_button.exists:
                 logger.error("FETCH button not found")
                 return False
             fetch_button.click()
             logger.info("Clicked FETCH")
+
+            if not self.check_internet_connection():
+                logger.error("No internet connection available")
+                self.device.shell('am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS')
+                self.device.shell('am start -n com.android.settings/.Settings')  # Open settings as a fallback
+                return False
+
             time.sleep(3)
 
-            # Click the specific YouTube Music element using XPath
             youtube_element = self.device.xpath(
                 '//*[@resource-id="com.google.android.apps.youtube.music:id/elements_container"]'
                 '/android.view.ViewGroup[1]/android.view.ViewGroup[5]/android.widget.ImageView[1]'
@@ -49,40 +89,44 @@ class YouTubeMusicController(BaseController):
             logger.info("Clicked YouTube Music element")
             time.sleep(3)
 
-            # Find and click the shuffle button using new XPath
             shuffle_element = self.device.xpath(
                 '//*[@resource-id="com.google.android.apps.youtube.music:id/bottom_sheet_list"]'
                 '/android.widget.FrameLayout[1]'
             )
 
-            if shuffle_element.exists:
-                shuffle_element.click()
-                logger.info("Clicked shuffle button")
-                return True
+            if not shuffle_element.exists:
+                logger.info("Trying to find shuffle button by text")
+                shuffle_element = self.device(text="Shuffle play",
+                                              packageName=self.package_name)
 
-            # Fallback to coordinates if XPath fails
-            screen_info = self.device.window_size()
-            shuffle_x = int(0.55 * screen_info[0])
-            shuffle_y = int(0.682 * screen_info[1])
-            self.device.click(shuffle_x, shuffle_y)
-            logger.info(f"Clicked shuffle button using coordinates at: {shuffle_x}, {shuffle_y}")
+            if not shuffle_element.exists:
+                logger.error("Shuffle button not found using any method")
+                return False
+
+            shuffle_element.click()
+            logger.info("Clicked shuffle button")
+            time.sleep(2)
             return True
 
         except Exception as e:
             logger.error(f"Error with IsoClipboard: {e}")
             return False
 
+
     def play_pause(self) -> bool:
         """Toggle play/pause state."""
         try:
-            play_button = self.device.xpath(
-                '//android.widget.ImageButton[@content-desc="Play" or @content-desc="Pause"]'
+            play_button = self.device(
+                resourceId="com.google.android.apps.youtube.music:id/player_control_play_pause_replay_button"
             )
-            if play_button.exists:
-                play_button.click()
-                logger.info("Toggled play/pause state")
-                return True
-            return False
+            if not play_button.exists:
+                logger.error("Play/pause button not found")
+                return False
+
+            play_button.click()
+            logger.info("Clicked play/pause button")
+            return True
+
         except Exception as e:
             logger.error(f"Error toggling play/pause: {e}")
             return False
@@ -93,17 +137,12 @@ class YouTubeMusicController(BaseController):
             next_button = self.device(
                 resourceId="com.google.android.apps.youtube.music:id/player_control_next_button"
             )
-            if next_button.exists:
-                next_button.click()
-                logger.info("Clicked next track button using resource ID")
-                return True
+            if not next_button.exists:
+                logger.error("Next track button not found")
+                return False
 
-            # Fallback to coordinates
-            screen_info = self.device.window_size()
-            next_x = int(0.722 * screen_info[0])
-            next_y = int(0.807 * screen_info[1])
-            self.device.click(next_x, next_y)
-            logger.info(f"Clicked next track using coordinates at: {next_x}, {next_y}")
+            next_button.click()
+            logger.info("Clicked next track button")
             return True
 
         except Exception as e:
@@ -116,17 +155,12 @@ class YouTubeMusicController(BaseController):
             prev_button = self.device(
                 resourceId="com.google.android.apps.youtube.music:id/player_control_previous_button"
             )
-            if prev_button.exists:
-                prev_button.click()
-                logger.info("Clicked previous track button using resource ID")
-                return True
+            if not prev_button.exists:
+                logger.error("Previous track button not found")
+                return False
 
-            # Fallback to coordinates
-            screen_info = self.device.window_size()
-            prev_x = int(0.27 * screen_info[0])
-            prev_y = int(0.789 * screen_info[1])
-            self.device.click(prev_x, prev_y)
-            logger.info(f"Clicked previous track using coordinates at: {prev_x}, {prev_y}")
+            prev_button.click()
+            logger.info("Clicked previous track button")
             return True
 
         except Exception as e:
