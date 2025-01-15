@@ -19,11 +19,24 @@ class MusicAutomation:
 
     def get_isoclipboard_delay(self) -> int:
         """Get random delay between 22-30 minutes in seconds for IsoClipboard."""
-        return random.randint(22 * 60, 30 * 60)
+        minutes = random.randint(22, 30)
+        seconds = minutes * 60
+        next_time = time.strftime('%H:%M:%S', time.localtime(time.time() + seconds))
+        logger.info(f"Next IsoClipboard action scheduled in {minutes} minutes (at {next_time})")
+        return seconds
 
     def get_music_control_delay(self) -> int:
         """Get random delay between 45 seconds and 6 minutes for music controls."""
-        return random.randint(45, 6 * 60)
+        seconds = random.randint(45, 6 * 60)
+        minutes = seconds // 60
+        remaining_seconds = seconds % 60
+        next_time = time.strftime('%H:%M:%S', time.localtime(time.time() + seconds))
+
+        if minutes > 0:
+            logger.info(f"Next music control action in {minutes}m {remaining_seconds}s (at {next_time})")
+        else:
+            logger.info(f"Next music control action in {seconds}s (at {next_time})")
+        return seconds
 
     def get_random_music_action(self) -> tuple[Callable, str]:
         """Get random music control action to perform."""
@@ -43,6 +56,8 @@ class MusicAutomation:
                 return False
             logger.info("Initial setup completed successfully")
             self.last_isoclipboard_time = time.time()
+            self.get_isoclipboard_delay()
+            logger.info("Initial automation setup complete, starting regular intervals")
             return True
         except Exception as e:
             logger.error(f"Error in initial setup: {e}")
@@ -56,17 +71,18 @@ class MusicAutomation:
                 time_since_isoclipboard = current_time - self.last_isoclipboard_time
 
                 # Check if it's time for IsoClipboard action
-                if time_since_isoclipboard >= self.get_isoclipboard_delay():
+                isoclipboard_delay = self.get_isoclipboard_delay()
+                if time_since_isoclipboard >= isoclipboard_delay:
                     logger.info("Performing IsoClipboard handling")
                     if self.controller.handle_isoclipboard():
                         logger.info("Successfully performed IsoClipboard handling")
                         self.last_isoclipboard_time = current_time
                     else:
                         logger.error("Failed to perform IsoClipboard handling")
+                        self.last_isoclipboard_time = current_time - (isoclipboard_delay - 300)
 
                 # Perform random music control action
                 music_delay = self.get_music_control_delay()
-                logger.info(f"Waiting {music_delay} seconds before next music control action")
                 time.sleep(music_delay)
 
                 action, action_name = self.get_random_music_action()
