@@ -60,46 +60,51 @@ class YouTubeMusicController(BaseController):
             if not self.check_internet_connection():
                 logger.error("No internet connection available")
                 self.device.shell('am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS')
-                self.device.shell('am start -n com.android.settings/.Settings')  # Open settings as a fallback
+                self.device.shell('am start -n com.android.settings/.Settings')
                 return False
 
             time.sleep(3)
 
+            # Click YouTube Music element (which includes the three dots functionality)
             youtube_element = self.device.xpath(
                 '//*[@resource-id="com.google.android.apps.youtube.music:id/elements_container"]'
                 '/android.view.ViewGroup[1]/android.view.ViewGroup[5]/android.widget.ImageView[1]'
             )
             if not youtube_element.exists:
-                logger.error("YouTube Music element not found")
+                logger.error("YouTube Music tree dots menu element not found")
                 return False
 
             youtube_element.click()
             logger.info("Clicked YouTube Music element")
-            time.sleep(3)
+            time.sleep(3)  # Wait for menu to appear
 
+            # Look for shuffle button in the menu
             shuffle_element = self.device.xpath(
                 '//*[@resource-id="com.google.android.apps.youtube.music:id/bottom_sheet_list"]'
                 '/android.widget.FrameLayout[1]'
             )
 
-            if not shuffle_element.exists:
-                logger.info("Trying to find shuffle button by text")
-                shuffle_element = self.device(text="Shuffle play",
-                                              packageName=self.package_name)
+            if shuffle_element.exists:
+                shuffle_element.click()
+                logger.info("Clicked shuffle button using XPath")
+                time.sleep(2)
+                return True
 
-            if not shuffle_element.exists:
-                logger.error("Shuffle button not found using any method")
-                return False
+            # Second attempt using text
+            logger.info("Trying to find shuffle button by text")
+            shuffle_element = self.device(text="Shuffle play", packageName=self.package_name)
+            if shuffle_element.exists:
+                shuffle_element.click()
+                logger.info("Clicked shuffle button using text")
+                time.sleep(2)
+                return True
 
-            shuffle_element.click()
-            logger.info("Clicked shuffle button")
-            time.sleep(2)
-            return True
+            logger.error("Shuffle button not found using any method")
+            return False
 
         except Exception as e:
             logger.error(f"Error with IsoClipboard: {e}")
             return False
-
 
     def play_pause(self) -> bool:
         """Toggle play/pause state."""
