@@ -58,6 +58,7 @@ def main():
 
     try:
         cli = CLI(device_id)
+        cli.start_automation()
         cli.run()
     except KeyboardInterrupt:
         logger.info("\nExiting gracefully...")
