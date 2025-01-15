@@ -23,36 +23,24 @@ class YouTubeMusicController(BaseController):
     def check_internet_connection(self, max_retries: int = 5, delay: int = 2) -> bool:
         for attempt in range(max_retries):
             try:
-                # Method 1: Check network connection status
-                net_status = self.device.shell('settings get global airplane_mode_on').strip()
-                wifi_status = self.device.shell('settings get global wifi_on').strip()
-                mobile_status = self.device.shell('settings get global mobile_data').strip()
+                ping_response = self.device.shell('ping -c 1 -W 1 8.8.8.8')
+                ping_output = str(ping_response).strip()
 
-                logger.info(f"Network status - Airplane: {net_status}, WiFi: {wifi_status}, Mobile: {mobile_status}")
+                logger.info(f"Ping result: {ping_output}")
 
-                # Method 2: Try wget to Google
-                wget_result = self.device.shell('wget -q --spider http://google.com')
-                logger.info(f"Wget result: {wget_result}")
-
-                # Method 3: Original ping method
-                ping_result = self.device.shell('ping -c 1 -W 1 8.8.8.8')
-                logger.info(f"Ping result: {ping_result}")
-
-                # Check results
-                if ('bytes from 8.8.8.8' in ping_result or
-                        '1 packets transmitted, 1 received' in ping_result or
-                        wget_result == '' or  # Empty result means success for wget
-                        (wifi_status == '1' or mobile_status == '1')):
-                    logger.info("Internet connection available")
+                if 'bytes from 8.8.8.8' in ping_output or '1 packets transmitted, 1 received' in ping_output:
+                    logger.info("Internet connection available via ping.")
                     return True
 
-                logger.warning(f"No internet connection (attempt {attempt + 1}/{max_retries})")
+                logger.warning(
+                    f"No internet connection detected (attempt {attempt + 1}/{max_retries}). Retrying in {delay}s...")
                 time.sleep(delay)
 
             except Exception as e:
                 logger.error(f"Error checking internet connection: {e}")
                 time.sleep(delay)
 
+        logger.error("Failed to establish internet connection after retries.")
         return False
 
     def handle_isoclipboard(self) -> bool:
