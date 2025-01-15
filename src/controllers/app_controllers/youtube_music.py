@@ -20,6 +20,76 @@ class YouTubeMusicController(BaseController):
         self.app_name = YouTubeMusicConfig.APP_NAME
         self.isoclipboard_package = IsoClipboardConfig.PACKAGE_NAME
 
+    def ensure_screen_active(self) -> bool:
+        """Ensure the Android device screen is active."""
+        try:
+            # Check if screen is on
+            screen_state = self.device.info.get('screenOn')
+
+            if not screen_state:
+                # Press power button to wake the screen
+                self.device.press("power")
+                time.sleep(2)  # Wait for screen to wake up
+
+                # Verify screen is now on
+                if not self.device.info.get('screenOn'):
+                    logger.error("Failed to activate screen")
+                    return False
+
+            logger.info("Screen is active")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error ensuring screen is active: {e}")
+            return False
+
+    def close_youtube_music(self) -> bool:
+        """Close YouTube Music app if it's running."""
+        try:
+            if self.is_running():
+                logger.info("YouTube Music is running, closing it")
+                if not self.force_stop():
+                    logger.error("Failed to force stop YouTube Music")
+                    return False
+                time.sleep(2)  # Wait for app to fully close
+
+                # Verify app is closed
+                if self.is_running():
+                    logger.error("YouTube Music is still running after force stop")
+                    return False
+
+            logger.info("YouTube Music is not running")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error closing YouTube Music: {e}")
+            return False
+
+    def start_initial_automation(self) -> bool:
+        """Execute initial automation steps."""
+        try:
+            # Step 1: Ensure screen is active
+            logger.info("Step 1: Ensuring screen is active")
+            if not self.ensure_screen_active():
+                return False
+
+            # Step 2: Check and close YouTube Music if running
+            logger.info("Step 2: Checking and closing YouTube Music if running")
+            if not self.close_youtube_music():
+                return False
+
+            # Step 3: Handle IsoClipboard automation
+            logger.info("Step 3: Starting IsoClipboard automation")
+            if not self.handle_isoclipboard():
+                return False
+
+            logger.info("Successfully completed initial automation steps")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error in initial automation: {e}")
+            return False
+
     def check_internet_connection(self, max_retries: int = 5, delay: int = 2) -> bool:
         for attempt in range(max_retries):
             try:
@@ -175,7 +245,6 @@ class YouTubeMusicController(BaseController):
             logger.error(f"Error liking current song: {e}")
             return False
 
-    # Other required methods from BaseController
     def start_app(self) -> bool:
         try:
             self.device.app_start(self.package_name)

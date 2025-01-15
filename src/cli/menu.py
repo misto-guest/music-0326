@@ -79,6 +79,7 @@ class CLI:
             print(f"{key} - {description}")
 
     def handle_command(self, command: str) -> bool:
+        """Handle user command."""
         if command not in self.commands:
             logger.warning(f"Unknown command: {command}")
             return True

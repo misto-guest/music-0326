@@ -29,6 +29,19 @@ class MusicAutomation:
         ]
         return random.choice(actions)
 
+    def perform_initial_setup(self) -> bool:
+        """Perform initial setup before starting automation."""
+        try:
+            logger.info("Starting initial setup...")
+            if not self.controller.start_initial_automation():
+                logger.error("Failed to complete initial setup")
+                return False
+            logger.info("Initial setup completed successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Error in initial setup: {e}")
+            return False
+
     def perform_random_automation(self):
         """Perform random automation actions."""
         while self.running:
@@ -61,6 +74,11 @@ class MusicAutomation:
             logger.warning("Automation already running")
             return
 
+        # Perform initial setup
+        if not self.perform_initial_setup():
+            logger.error("Failed to complete initial setup, not starting automation")
+            return
+
         self.running = True
         self.automation_thread = threading.Thread(target=self.perform_random_automation)
         self.automation_thread.daemon = True
@@ -76,4 +94,9 @@ class MusicAutomation:
         self.running = False
         if self.automation_thread:
             self.automation_thread.join()
+
+        # Cleanup: ensure YouTube Music is closed
+        if not self.controller.close_youtube_music():
+            logger.warning("Failed to close YouTube Music during cleanup")
+
         logger.info("Stopped music automation")
