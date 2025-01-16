@@ -20,15 +20,17 @@ class MusicAutomation:
         """Manage YouTube Music window state."""
         try:
             if minimize:
-                self.controller.device.press("home")
+                self.controller.device.shell('input keyevent KEYCODE_HOME')
                 time.sleep(0.5)
-                self.controller.device.press("home")
+                self.controller.device.shell('input keyevent KEYCODE_HOME')
+                time.sleep(0.5)
+                self.controller.device.shell('input keyevent KEYCODE_HOME')
                 logger.info("Minimized YouTube Music window")
             else:
                 self.controller.device.app_stop(self.controller.package_name)
-                time.sleep(1)
-                self.controller.device.app_start(self.controller.package_name)
                 time.sleep(2)
+                self.controller.device.app_start(self.controller.package_name)
+                time.sleep(3)
                 logger.info("Restored YouTube Music window")
             return True
         except Exception as e:
