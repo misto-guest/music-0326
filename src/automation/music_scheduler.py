@@ -27,17 +27,22 @@ class MusicAutomation:
                 if force_restart:
                     self.controller.device.app_stop(self.controller.package_name)
                     time.sleep(1)
-                    self.controller.device.app_start(self.controller.package_name)
+                    self.controller.device.shell(
+                        f'monkey -p {self.controller.package_name} -c android.intent.category.LAUNCHER 1'
+                    )
                     time.sleep(3)
                     logger.info("Restored YouTube Music window (full restart)")
                 else:
-                    self.controller.device.shell('input keyevent KEYCODE_APP_SWITCH')
-                    time.sleep(1)
-                    ytm_app = self.controller.device(text="YouTube Music")
-                    if ytm_app.exists:
-                        ytm_app.click()
+                    try:
+                        self.controller.device.xpath('//*[@content-desc="YouTube Music YT Music"]').click()
+                        logger.info("Restored YouTube Music window (via XPath)")
+                    except Exception as e:
+                        logger.warning(f"XPath restore failed: {e}, using monkey command fallback")
+                        self.controller.device.shell(
+                            f'monkey -p {self.controller.package_name} -c android.intent.category.LAUNCHER 1'
+                        )
+                        logger.info("Restored YouTube Music window (via monkey command)")
                     time.sleep(2)
-                    logger.info("Restored YouTube Music window (from recent)")
             return True
         except Exception as e:
             logger.error(f"Error managing window state: {e}")
