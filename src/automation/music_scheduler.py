@@ -21,8 +21,12 @@ class MusicAutomation:
         try:
             if minimize:
                 self.controller.device.press("home")
+                time.sleep(0.5)
+                self.controller.device.press("home")
                 logger.info("Minimized YouTube Music window")
             else:
+                self.controller.device.app_stop(self.controller.package_name)
+                time.sleep(1)
                 self.controller.device.app_start(self.controller.package_name)
                 time.sleep(2)
                 logger.info("Restored YouTube Music window")
