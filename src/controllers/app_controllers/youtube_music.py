@@ -148,6 +148,7 @@ class YouTubeMusicController(BaseController):
             if shuffle_button.exists:
                 shuffle_button.click()
                 logger.info("Clicked Shuffle play using text selector")
+                time.sleep(5)
                 return True
 
             shuffle_xpath = ('//*[@resource-id="com.google.android.apps.youtube.music:id/bottom_sheet_list"]'
