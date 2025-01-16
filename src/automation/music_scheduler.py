@@ -23,14 +23,18 @@ class MusicAutomation:
                 self.controller.device.shell('input keyevent KEYCODE_HOME')
                 time.sleep(0.5)
                 self.controller.device.shell('input keyevent KEYCODE_HOME')
-                time.sleep(0.5)
-                self.controller.device.shell('input keyevent KEYCODE_HOME')
                 logger.info("Minimized YouTube Music window")
             else:
-                self.controller.device.app_stop(self.controller.package_name)
+                self.controller.device.shell('input keyevent KEYCODE_APP_SWITCH')
+                time.sleep(1)
+                ytm_app = self.controller.device(text="YouTube Music")
+                if ytm_app.exists:
+                    ytm_app.click()
+                else:
+                    self.controller.device.app_stop(self.controller.package_name)
+                    time.sleep(1)
+                    self.controller.device.app_start(self.controller.package_name)
                 time.sleep(2)
-                self.controller.device.app_start(self.controller.package_name)
-                time.sleep(3)
                 logger.info("Restored YouTube Music window")
             return True
         except Exception as e:
