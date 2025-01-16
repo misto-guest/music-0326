@@ -1,11 +1,10 @@
-# src/main.py
+#src / main.py
 
 import argparse
 import logging
 import sys
 from pathlib import Path
 import yaml
-
 from src.cli.menu import CLI
 from src.utils.logging_utils import setup_logger
 
