@@ -84,14 +84,16 @@ class MusicAutomation:
         """Perform random automation actions with different timing patterns."""
         while self.running:
             try:
-                self.manage_window_state(minimize=True)
-
                 current_time = time.time()
                 time_since_isoclipboard = current_time - self.last_isoclipboard_time
-
                 isoclipboard_delay = self.get_isoclipboard_delay()
+
                 if time_since_isoclipboard >= isoclipboard_delay:
+                    self.manage_window_state(minimize=True)
+                    time.sleep(1)
+
                     logger.info("Performing IsoClipboard handling")
+
                     self.manage_window_state(minimize=False)
                     time.sleep(2)
 
@@ -102,9 +104,15 @@ class MusicAutomation:
                         logger.error("Failed to perform IsoClipboard handling")
                         self.last_isoclipboard_time = current_time - (isoclipboard_delay - 300)
 
+                    self.manage_window_state(minimize=True)
+                    time.sleep(1)
+
                 # Perform random music control action
                 music_delay = self.get_music_control_delay()
                 time.sleep(music_delay)
+
+                self.manage_window_state(minimize=True)
+                time.sleep(1)
 
                 self.manage_window_state(minimize=False)
                 time.sleep(2)
@@ -116,8 +124,12 @@ class MusicAutomation:
                 else:
                     logger.error(f"Failed to perform {action_name}")
 
+                self.manage_window_state(minimize=True)
+                time.sleep(1)
+
             except Exception as e:
                 logger.error(f"Error in automation: {e}")
+                self.manage_window_state(minimize=True)
                 time.sleep(60)
 
     def start_automation(self):
