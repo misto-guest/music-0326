@@ -72,6 +72,10 @@ class MusicAutomation:
                 logger.error("Failed to complete initial setup")
                 return False
             logger.info("Initial setup completed successfully")
+
+            self.manage_window_state(minimize=True)
+            time.sleep(1)
+
             self.last_isoclipboard_time = time.time()
             self.get_isoclipboard_delay()
             logger.info("Initial automation setup complete, starting regular intervals")
@@ -147,6 +151,10 @@ class MusicAutomation:
         self.automation_thread = threading.Thread(target=self.perform_random_automation)
         self.automation_thread.daemon = True
         self.automation_thread.start()
+
+        self.manage_window_state(minimize=True)
+        time.sleep(1)
+
         logger.info("Started music automation")
 
     def stop_automation(self):
