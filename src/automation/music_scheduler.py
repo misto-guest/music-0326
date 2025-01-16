@@ -16,8 +16,7 @@ class MusicAutomation:
         self.automation_thread: Optional[threading.Thread] = None
         self.last_isoclipboard_time = 0
 
-    def manage_window_state(self, minimize: bool = True) -> bool:
-        """Manage YouTube Music window state."""
+    def manage_window_state(self, minimize: bool = True, force_restart: bool = False) -> bool:
         try:
             if minimize:
                 self.controller.device.shell('input keyevent KEYCODE_HOME')
@@ -25,17 +24,20 @@ class MusicAutomation:
                 self.controller.device.shell('input keyevent KEYCODE_HOME')
                 logger.info("Minimized YouTube Music window")
             else:
-                self.controller.device.shell('input keyevent KEYCODE_APP_SWITCH')
-                time.sleep(1)
-                ytm_app = self.controller.device(text="YouTube Music")
-                if ytm_app.exists:
-                    ytm_app.click()
-                else:
+                if force_restart:
                     self.controller.device.app_stop(self.controller.package_name)
                     time.sleep(1)
                     self.controller.device.app_start(self.controller.package_name)
-                time.sleep(2)
-                logger.info("Restored YouTube Music window")
+                    time.sleep(3)
+                    logger.info("Restored YouTube Music window (full restart)")
+                else:
+                    self.controller.device.shell('input keyevent KEYCODE_APP_SWITCH')
+                    time.sleep(1)
+                    ytm_app = self.controller.device(text="YouTube Music")
+                    if ytm_app.exists:
+                        ytm_app.click()
+                    time.sleep(2)
+                    logger.info("Restored YouTube Music window (from recent)")
             return True
         except Exception as e:
             logger.error(f"Error managing window state: {e}")
@@ -102,7 +104,7 @@ class MusicAutomation:
                     self.manage_window_state(minimize=True)
                     time.sleep(1)
                     logger.info("Performing IsoClipboard handling")
-                    self.manage_window_state(minimize=False)
+                    self.manage_window_state(minimize=False, force_restart=True)
                     time.sleep(3)
                     if self.controller.handle_isoclipboard():
                         logger.info("Successfully performed IsoClipboard handling")
@@ -117,24 +119,15 @@ class MusicAutomation:
                 music_delay = self.get_music_control_delay()
                 time.sleep(music_delay)
 
-                self.manage_window_state(minimize=False)
-                time.sleep(3)
-
-                if not self.controller.device(packageName=self.controller.package_name).exists:
-                    logger.warning("App not in foreground, retrying restore")
-                    self.manage_window_state(minimize=False)
-                    time.sleep(3)
+                self.manage_window_state(minimize=False, force_restart=False)
+                time.sleep(2)
 
                 action, action_name = self.get_random_music_action()
                 logger.info(f"Performing action: {action_name}")
-
-                if self.controller.device(packageName=self.controller.package_name).exists:
-                    if action():
-                        logger.info(f"Successfully performed {action_name}")
-                    else:
-                        logger.error(f"Failed to perform {action_name}")
+                if action():
+                    logger.info(f"Successfully performed {action_name}")
                 else:
-                    logger.error("App not properly restored before action")
+                    logger.error(f"Failed to perform {action_name}")
 
                 self.manage_window_state(minimize=True)
                 time.sleep(1)
