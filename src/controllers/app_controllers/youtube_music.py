@@ -143,7 +143,7 @@ class YouTubeMusicController(BaseController):
                 self.device.click(835, 1135)
                 logger.info("Clicked using coordinates")
 
-            time.sleep(2)
+            time.sleep(3)
             shuffle_button = self.device(text="Shuffle play", packageName=self.package_name)
             if shuffle_button.exists:
                 shuffle_button.click()

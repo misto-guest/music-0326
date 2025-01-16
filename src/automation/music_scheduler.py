@@ -1,5 +1,4 @@
 # src/automation/music_scheduler.py
-
 import random
 import threading
 import time
@@ -17,9 +16,24 @@ class MusicAutomation:
         self.automation_thread: Optional[threading.Thread] = None
         self.last_isoclipboard_time = 0
 
+    def manage_window_state(self, minimize: bool = True) -> bool:
+        """Manage YouTube Music window state."""
+        try:
+            if minimize:
+                self.controller.device.press("home")
+                logger.info("Minimized YouTube Music window")
+            else:
+                self.controller.device.app_start(self.controller.package_name)
+                time.sleep(2)
+                logger.info("Restored YouTube Music window")
+            return True
+        except Exception as e:
+            logger.error(f"Error managing window state: {e}")
+            return False
+
     def get_isoclipboard_delay(self) -> int:
         """Get random delay between 22-30 minutes in seconds for IsoClipboard."""
-        minutes = random.randint(22, 30)
+        minutes = random.randint(2, 5)
         seconds = minutes * 60
         next_time = time.strftime('%H:%M:%S', time.localtime(time.time() + seconds))
         logger.info(f"Next IsoClipboard action scheduled in {minutes} minutes (at {next_time})")
@@ -31,7 +45,6 @@ class MusicAutomation:
         minutes = seconds // 60
         remaining_seconds = seconds % 60
         next_time = time.strftime('%H:%M:%S', time.localtime(time.time() + seconds))
-
         if minutes > 0:
             logger.info(f"Next music control action in {minutes}m {remaining_seconds}s (at {next_time})")
         else:
@@ -67,13 +80,17 @@ class MusicAutomation:
         """Perform random automation actions with different timing patterns."""
         while self.running:
             try:
+                self.manage_window_state(minimize=True)
+
                 current_time = time.time()
                 time_since_isoclipboard = current_time - self.last_isoclipboard_time
 
-                # Check if it's time for IsoClipboard action
                 isoclipboard_delay = self.get_isoclipboard_delay()
                 if time_since_isoclipboard >= isoclipboard_delay:
                     logger.info("Performing IsoClipboard handling")
+                    self.manage_window_state(minimize=False)
+                    time.sleep(2)
+
                     if self.controller.handle_isoclipboard():
                         logger.info("Successfully performed IsoClipboard handling")
                         self.last_isoclipboard_time = current_time
@@ -85,9 +102,11 @@ class MusicAutomation:
                 music_delay = self.get_music_control_delay()
                 time.sleep(music_delay)
 
+                self.manage_window_state(minimize=False)
+                time.sleep(2)
+
                 action, action_name = self.get_random_music_action()
                 logger.info(f"Performing action: {action_name}")
-
                 if action():
                     logger.info(f"Successfully performed {action_name}")
                 else:
@@ -127,5 +146,4 @@ class MusicAutomation:
         # Cleanup: ensure YouTube Music is closed
         if not self.controller.close_youtube_music():
             logger.warning("Failed to close YouTube Music during cleanup")
-
         logger.info("Stopped music automation")
