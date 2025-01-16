@@ -95,19 +95,15 @@ class MusicAutomation:
                 if time_since_isoclipboard >= isoclipboard_delay:
                     self.manage_window_state(minimize=True)
                     time.sleep(1)
-
                     logger.info("Performing IsoClipboard handling")
-
                     self.manage_window_state(minimize=False)
-                    time.sleep(2)
-
+                    time.sleep(3)
                     if self.controller.handle_isoclipboard():
                         logger.info("Successfully performed IsoClipboard handling")
                         self.last_isoclipboard_time = current_time
                     else:
                         logger.error("Failed to perform IsoClipboard handling")
                         self.last_isoclipboard_time = current_time - (isoclipboard_delay - 300)
-
                     self.manage_window_state(minimize=True)
                     time.sleep(1)
 
@@ -115,18 +111,24 @@ class MusicAutomation:
                 music_delay = self.get_music_control_delay()
                 time.sleep(music_delay)
 
-                self.manage_window_state(minimize=True)
-                time.sleep(1)
-
                 self.manage_window_state(minimize=False)
-                time.sleep(2)
+                time.sleep(3)
+
+                if not self.controller.device(packageName=self.controller.package_name).exists:
+                    logger.warning("App not in foreground, retrying restore")
+                    self.manage_window_state(minimize=False)
+                    time.sleep(3)
 
                 action, action_name = self.get_random_music_action()
                 logger.info(f"Performing action: {action_name}")
-                if action():
-                    logger.info(f"Successfully performed {action_name}")
+
+                if self.controller.device(packageName=self.controller.package_name).exists:
+                    if action():
+                        logger.info(f"Successfully performed {action_name}")
+                    else:
+                        logger.error(f"Failed to perform {action_name}")
                 else:
-                    logger.error(f"Failed to perform {action_name}")
+                    logger.error("App not properly restored before action")
 
                 self.manage_window_state(minimize=True)
                 time.sleep(1)
