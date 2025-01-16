@@ -119,14 +119,12 @@ class YouTubeMusicController(BaseController):
             # Start IsoClipboard app
             self.device.app_start(self.isoclipboard_package)
             time.sleep(2)
-
             fetch_button = self.device(resourceId=f"{self.isoclipboard_package}:id/buttonFetchUrl4")
             if not fetch_button.exists:
                 logger.error("FETCH button not found")
                 return False
             fetch_button.click()
             logger.info("Clicked FETCH")
-
             if not self.check_internet_connection():
                 logger.error("No internet connection available")
                 self.device.shell('am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS')
@@ -135,34 +133,17 @@ class YouTubeMusicController(BaseController):
 
             time.sleep(3)
 
-            menu_xpath_1 = ('//*[@resource-id="com.google.android.apps.youtube.music:id/elements_container"]'
-                            '/android.view.ViewGroup[1]/android.view.ViewGroup[6]/android.widget.ImageView[1]')
-            menu_xpath_2 = ('//*[@resource-id="com.google.android.apps.youtube.music:id/elements_container"]'
-                            '/android.view.ViewGroup[1]/android.view.ViewGroup[6]/android.widget.ImageView[2]')
-            menu_xpath_3 = ('//*[@resource-id="com.google.android.apps.youtube.music:id/elements_container"]'
-                            '/android.view.ViewGroup[1]/android.view.ViewGroup[5]/android.widget.ImageView[1]')
-
-            menu_element = self.device.xpath(menu_xpath_1)
-            if not menu_element.exists:
-                menu_element = self.device.xpath(menu_xpath_2)
-                if not menu_element.exists:
-                    menu_element = self.device.xpath(menu_xpath_3)
-                    if not menu_element.exists:
-                        logger.warning("Three dots menu not found with either XPath; trying coordinate fallback")
-
-                        fallback_x = 835 + (126 // 2)
-                        fallback_y = 1041 + (126 // 2)
-                        self.device.click(fallback_x, fallback_y)
-                        logger.info(f"Clicked coordinate fallback at ({fallback_x}, {fallback_y})")
-                    else:
-                        menu_element.click()
-                        logger.info("Clicked three dots menu (XPath 2)")
-                else:
-                    menu_element.click()
-                    logger.info("Clicked three dots menu (XPath 1)")
+            try:
+                self.device.xpath(
+                    '//*[@resource-id="com.google.android.apps.youtube.music:id/elements_container"]'
+                    '/android.view.ViewGroup[1]/android.view.ViewGroup[6]/android.widget.ImageView[1]').click()
+                logger.info("Clicked using direct XPath")
+            except:
+                logger.warning("XPath 3dots failed, trying coordinates")
+                self.device.click(835, 1135)
+                logger.info("Clicked using coordinates")
 
             time.sleep(2)
-
             shuffle_button = self.device(text="Shuffle play", packageName=self.package_name)
             if shuffle_button.exists:
                 shuffle_button.click()
@@ -179,7 +160,6 @@ class YouTubeMusicController(BaseController):
 
             logger.error("Shuffle button not found using any method")
             return False
-
         except Exception as e:
             logger.error(f"Error with IsoClipboard: {e}")
             return False
