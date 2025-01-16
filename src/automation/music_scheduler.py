@@ -49,8 +49,8 @@ class MusicAutomation:
             return False
 
     def get_isoclipboard_delay(self) -> int:
-        """Get random delay between 22-30 minutes in seconds for IsoClipboard."""
-        minutes = random.randint(2, 5)
+        """Get random delay between 22-33 minutes in seconds for IsoClipboard."""
+        minutes = random.randint(22, 33)
         seconds = minutes * 60
         next_time = time.strftime('%H:%M:%S', time.localtime(time.time() + seconds))
         logger.info(f"Next IsoClipboard action scheduled in {minutes} minutes (at {next_time})")
