@@ -220,19 +220,62 @@ class YouTubeMusicController(BaseController):
             return False
 
     def like_current_song(self) -> bool:
-        """Like the currently playing song."""
+        """Like the currently playing song with enhanced error handling and retries."""
+        xpath = '//*[contains(@content-desc, "like this video along with") and contains(@content-desc, "other people")]/android.view.ViewGroup[1]'
+
         try:
-            like_button = self.device.xpath(
-                '//*[@content-desc="like this video along with 0 other people"]/'
-                'android.view.ViewGroup[1]'
-            )
+            like_button = self.device.xpath(xpath)
+            logger.debug(f"Initial button exists check: {like_button.exists}")
+
             if like_button.exists:
-                like_button.click()
-                logger.info("Liked current song")
-                return True
-            return False
+                try:
+                    like_button.click()
+                    logger.info("Liked current song via direct click")
+                    return True
+                except Exception as click_error:
+                    logger.debug(f"Direct click failed: {click_error}")
+
+            logger.debug("Attempting with wait_timeout...")
+            like_button = self.device.xpath(xpath).wait(timeout=5.0)
+            if like_button:
+                try:
+                    like_button.click()
+                    logger.info("Liked current song after waiting")
+                    return True
+                except Exception as wait_click_error:
+                    logger.debug(f"Wait-click failed: {wait_click_error}")
+
+            logger.debug("Attempting force tap...")
+            element_info = self.device.xpath(xpath).info
+            if element_info:
+                bounds = element_info.get('bounds', {})
+                center_x = (bounds.get('left', 0) + bounds.get('right', 0)) // 2
+                center_y = (bounds.get('top', 0) + bounds.get('bottom', 0)) // 2
+
+                if center_x and center_y:
+                    self.device.click(center_x, center_y)
+                    logger.info("Liked current song via tap coordinates")
+                    return True
+
+            logger.debug("Attempting fallback coordinates...")
+            screen_width = self.device.window_size()[0]
+            screen_height = self.device.window_size()[1]
+            x_coord = int(0.113 * screen_width)
+            y_coord = int(0.623 * screen_height)
+
+            self.device.click(x_coord, y_coord)
+            logger.info("Liked current song via fallback coordinates")
+            return True
+
         except Exception as e:
             logger.error(f"Error liking current song: {e}")
+            # Log additional debug information
+            try:
+                logger.debug(f"Device info: {self.device.info}")
+                logger.debug(f"Current app: {self.device.app_current()}")
+                logger.debug(f"Element tree: {self.device.dump_hierarchy()}")
+            except Exception as debug_error:
+                logger.debug(f"Failed to get debug info: {debug_error}")
             return False
 
     def start_app(self) -> bool:
