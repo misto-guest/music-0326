@@ -220,8 +220,10 @@ class YouTubeMusicController(BaseController):
             return False
 
     def like_current_song(self) -> bool:
-        """Like the currently playing song with enhanced error handling and retries."""
-        xpath = '//*[contains(@content-desc, "like this video along with") and contains(@content-desc, "other people")]/android.view.ViewGroup[1]'
+        xpath = (
+            '//*[contains(@content-desc, "like this video along with") '
+            'and contains(@content-desc, "other people")]/android.view.ViewGroup[1]'
+        )
 
         original_wait_timeout = self.device.wait_timeout
         original_implicit_wait = 0.0
@@ -256,12 +258,27 @@ class YouTubeMusicController(BaseController):
                     logger.warning(f"Bounding-box tap failed: {bbox_err}")
 
             screen_w, screen_h = self.device.window_size()
-            x_coord = int(0.113 * screen_w)
-            y_coord = int(0.623 * screen_h)
+            fallback1_x = int(0.113 * screen_w)
+            fallback1_y = int(0.623 * screen_h)
 
-            self.device.click(x_coord, y_coord)
-            logger.info("Liked current song via fallback coordinates.")
-            return True
+            try:
+                self.device.click(fallback1_x, fallback1_y)
+                logger.info(f"Liked current song via fallback coordinates #1: {fallback1_x}, {fallback1_y}")
+                return True
+            except Exception as e1:
+                logger.warning(f"First fallback coordinate tap failed: {e1}")
+
+            # Second fallback coordinates
+            fallback2_x = int(0.121 * screen_w)
+            fallback2_y = int(0.659 * screen_h)
+
+            try:
+                self.device.click(fallback2_x, fallback2_y)
+                logger.info(f"Liked current song via fallback coordinates #2: {fallback2_x}, {fallback2_y}")
+                return True
+            except Exception as e2:
+                logger.warning(f"Second fallback coordinate tap failed: {e2}")
+                return False
 
         except Exception as main_err:
             logger.error(f"Error liking current song: {main_err}")
