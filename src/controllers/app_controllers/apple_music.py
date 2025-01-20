@@ -20,6 +20,7 @@ class AppleMusicController(BaseController):
         self.app_name = AppleMusicConfig.APP_NAME
 
     def start_app(self) -> bool:
+        """Start Apple Music app."""
         try:
             self.device.app_start(self.package_name)
             time.sleep(2)
@@ -29,6 +30,7 @@ class AppleMusicController(BaseController):
             return False
 
     def stop_app(self) -> bool:
+        """Stop Apple Music app."""
         try:
             self.device.app_stop(self.package_name)
             return True
@@ -121,15 +123,29 @@ class AppleMusicController(BaseController):
     def handle_isoclipboard(self) -> bool:
         """Handle IsoClipboard for Apple Music."""
         try:
-            search_tab = self.device(resourceId=f"{self.package_name}:id/navigation_search")
-            if not search_tab.exists:
-                logger.error("Search tab not found")
+            self.device.app_start(self.isoclipboard_package)
+            time.sleep(2)
+
+            fetch_button = self.device.xpath('//*[@resource-id="com.example.isolatedclipboard:id/buttonFetchUrl2"]')
+            if not fetch_button.exists:
+                logger.error("FETCH button not found")
                 return False
 
-            search_tab.click()
-            time.sleep(1)
+            fetch_button.click()
+            logger.info("Clicked FETCH button")
+            time.sleep(2)
 
-            search_field = self.device(resourceId=f"{self.package_name}:id/search_box")
+            if not self.is_running():
+                logger.info("Starting Apple Music")
+                self.start_app()
+                time.sleep(2)
+
+            search_tab = self.device.xpath('//*[@resource-id="com.apple.android.music:id/navigation_search"]')
+            if search_tab.exists:
+                search_tab.click()
+                time.sleep(1)
+
+            search_field = self.device.xpath('//*[@resource-id="com.apple.android.music:id/search_box"]')
             if not search_field.exists:
                 logger.error("Search field not found")
                 return False
@@ -138,16 +154,17 @@ class AppleMusicController(BaseController):
             time.sleep(1)
 
             self.device.press("paste")
+            time.sleep(0.5)
             self.device.press("enter")
             time.sleep(2)
 
-            first_result = self.device(resourceId=f"{self.package_name}:id/search_result_item").first()
+            first_result = self.device.xpath('//*[@resource-id="com.apple.android.music:id/search_result_item"]')
             if not first_result.exists:
                 logger.error("No search results found")
                 return False
 
             first_result.click()
-            time.sleep(1)
+            time.sleep(2)
 
             return self.play_pause()
 
