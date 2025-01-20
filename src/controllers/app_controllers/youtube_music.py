@@ -220,27 +220,56 @@ class YouTubeMusicController(BaseController):
             return False
 
     def like_current_song(self) -> bool:
-        """Like the currently playing song with minimized timeouts."""
-        original_timeout = self.device.wait_timeout
+        """Like the currently playing song with enhanced error handling and retries."""
+        xpath = '//*[contains(@content-desc, "like this video along with") and contains(@content-desc, "other people")]/android.view.ViewGroup[1]'
+
+        original_wait_timeout = self.device.wait_timeout
+        original_implicit_wait = 0.0
 
         try:
-            self.device.implicitly_wait(0.1)
-            self.device.wait_timeout = 0.1
+            short_timeout = 0.5
+            self.device.wait_timeout = short_timeout
+            self.device.implicitly_wait(short_timeout)
 
-            screen_info = self.device.window_size()
-            like_x = int(0.121 * screen_info[0])
-            like_y = int(0.659 * screen_info[1])
-            self.device.click(like_x, like_y)
-            logger.info("Liked song via coordinates")
+            like_button = self.device.xpath(xpath)
+            if like_button.exists:
+                try:
+                    like_button.click()
+                    logger.info("Liked current song via direct XPath click")
+                    return True
+                except Exception as e:
+                    logger.warning(f"Direct XPath click failed: {e}")
+
+            if like_button.exists:
+                try:
+                    element_info = like_button.info
+                    if element_info:
+                        bounds = element_info.get('bounds', {})
+                        center_x = (bounds.get('left', 0) + bounds.get('right', 0)) // 2
+                        center_y = (bounds.get('top', 0) + bounds.get('bottom', 0)) // 2
+
+                        if center_x and center_y:
+                            self.device.click(center_x, center_y)
+                            logger.info("Liked current song via bounding-box center tap")
+                            return True
+                except Exception as bbox_err:
+                    logger.warning(f"Bounding-box tap failed: {bbox_err}")
+
+            screen_w, screen_h = self.device.window_size()
+            x_coord = int(0.113 * screen_w)
+            y_coord = int(0.623 * screen_h)
+
+            self.device.click(x_coord, y_coord)
+            logger.info("Liked current song via fallback coordinates.")
             return True
 
-        except Exception:
-            logger.debug("Coordinate click failed")
+        except Exception as main_err:
+            logger.error(f"Error liking current song: {main_err}")
             return False
 
         finally:
-            self.device.implicitly_wait(original_timeout)
-            self.device.wait_timeout = original_timeout
+            self.device.wait_timeout = original_wait_timeout
+            self.device.implicitly_wait(original_implicit_wait)
 
     def start_app(self) -> bool:
         try:
