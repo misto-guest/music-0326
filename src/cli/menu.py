@@ -44,6 +44,8 @@ class CLI:
                    lambda: self.controller.app_controllers['apple_music'].handle_isoclipboard()),
             'a5': ('Apple Music: Like Current Song',
                    lambda: self.controller.app_controllers['apple_music'].like_current_song()),
+            'a6': ('Apple Music: Toggle Shuffle',
+                   lambda: self.controller.app_controllers['apple_music'].shuffle()),
 
             # General Commands
             'c': ('Close Music Apps', self.controller.close_music_recent_apps),
