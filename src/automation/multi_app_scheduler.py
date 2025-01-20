@@ -292,11 +292,16 @@ class MultiMusicAutomation:
             logger.error("No Apple Music controller provided")
             return
 
+        # Perform initial setup before starting thread
+        if not self._apple_initial_setup():
+            logger.error("Failed Apple Music initial setup, not starting automation")
+            return
+
         self.running = True
         self.automation_thread = threading.Thread(target=self._apple_automation_loop)
         self.automation_thread.daemon = True
         self.automation_thread.start()
-        logger.info("Started Apple Music automation")
+        logger.info("Started Apple Music automation successfully")
 
     def stop_automation(self):
         """Stop the automation process."""

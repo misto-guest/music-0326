@@ -149,7 +149,7 @@ class AppleMusicController(BaseController):
             self.device.app_start("com.example.isolatedclipboard")
             time.sleep(2)
 
-            # Click FETCH button using correct resource ID
+            # Click FETCH button
             fetch_button = self.device.xpath('//*[@resource-id="com.example.isolatedclipboard:id/buttonFetchUrl2"]')
             if not fetch_button.exists:
                 logger.error("FETCH button not found")
@@ -157,46 +157,18 @@ class AppleMusicController(BaseController):
 
             fetch_button.click()
             logger.info("Clicked FETCH button")
-            time.sleep(2)
+            time.sleep(2)  # Wait for clipboard operation
 
-            # Check if already in Apple Music
-            if not self.is_running():
-                logger.info("Starting Apple Music")
-                self.start_app()
+            # Click shuffle button
+            shuffle_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/button_shuffle"]')
+            if shuffle_button.exists:
+                shuffle_button.click()
+                logger.info("Clicked shuffle button")
                 time.sleep(2)
+                return True
 
-            # Navigate to Search tab if needed
-            search_tab = self.device.xpath('//*[@resource-id="com.apple.android.music:id/navigation_search"]')
-            if search_tab.exists:
-                search_tab.click()
-                time.sleep(1)
-
-            # Click search field
-            search_field = self.device.xpath('//*[@resource-id="com.apple.android.music:id/search_box"]')
-            if not search_field.exists:
-                logger.error("Search field not found")
-                return False
-
-            search_field.click()
-            time.sleep(1)
-
-            # Paste and search
-            self.device.press("paste")
-            time.sleep(0.5)
-            self.device.press("enter")
-            time.sleep(2)
-
-            # Click first result
-            first_result = self.device.xpath('//*[@resource-id="com.apple.android.music:id/search_result_item"]')
-            if not first_result.exists:
-                logger.error("No search results found")
-                return False
-
-            first_result.click()
-            time.sleep(2)
-
-            # Ensure playback starts
-            return self.play_pause()
+            logger.error("Shuffle button not found")
+            return False
 
         except Exception as e:
             logger.error(f"Error with IsoClipboard: {e}")
