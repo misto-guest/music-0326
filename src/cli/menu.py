@@ -1,10 +1,10 @@
 # src/cli/menu.py
 
 import time
+import argparse
 from typing import Dict, Callable, Optional, Tuple
 from src.controllers.device_controller import DeviceController
 from src.utils.logging_utils import setup_logger
-from src.automation.music_scheduler import MusicAutomation
 
 logger = setup_logger(__name__)
 
@@ -16,7 +16,6 @@ class CLI:
         """Initialize CLI with device controller."""
         self.device_id = device_id
         self.controller = DeviceController(device_id)
-        self.automation: Optional[MusicAutomation] = None
         self._setup_commands()
 
     def _setup_commands(self):
@@ -108,8 +107,3 @@ class CLI:
             except Exception as e:
                 logger.error(f"Unexpected error: {e}")
                 continue
-
-
-if __name__ == "__main__":
-    cli = CLI("your_device_id")
-    cli.run()
