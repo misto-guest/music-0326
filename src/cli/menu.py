@@ -1,7 +1,6 @@
 # src/cli/menu.py
 
 import time
-import argparse
 from typing import Dict, Callable, Optional, Tuple
 from src.controllers.device_controller import DeviceController
 from src.utils.logging_utils import setup_logger
@@ -15,6 +14,7 @@ class CLI:
     def __init__(self, device_id: str):
         """Initialize CLI with device controller."""
         self.device_id = device_id
+        logger.info(f"Initializing CLI for device: {device_id}")
         self.controller = DeviceController(device_id)
         self._setup_commands()
 
@@ -88,12 +88,12 @@ class CLI:
 
     def run(self):
         """Run the main CLI loop."""
-        logger.info(f"Starting CLI for device: {self.device_id}")
+        logger.info(f"Running CLI for device: {self.device_id}")
 
         while True:
             try:
                 self.display_menu()
-                command = input("Enter command: ").lower()
+                command = input("\nEnter command: ").lower().strip()
 
                 if not self.handle_command(command):
                     logger.info("Exiting...")
@@ -102,8 +102,7 @@ class CLI:
                 time.sleep(0.5)
 
             except KeyboardInterrupt:
-                logger.info("\nReceived keyboard interrupt, exiting...")
-                break
+                raise
             except Exception as e:
-                logger.error(f"Unexpected error: {e}")
+                logger.error(f"Error in CLI loop: {e}")
                 continue
