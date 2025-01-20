@@ -23,13 +23,6 @@ class AppleMusicController(BaseController):
         try:
             self.device.app_start(self.package_name)
             time.sleep(2)
-
-            # Navigate to Library if needed
-            library_tab = self.device(resourceId=f"{self.package_name}:id/navigation_library")
-            if library_tab.exists:
-                library_tab.click()
-                time.sleep(1)
-
             return self.is_running()
         except Exception as e:
             logger.error(f"Error starting Apple Music: {e}")
@@ -44,6 +37,7 @@ class AppleMusicController(BaseController):
             return False
 
     def is_running(self) -> bool:
+        """Check if Apple Music is running."""
         try:
             return bool(self.device(packageName=self.package_name).exists)
         except Exception as e:
@@ -63,18 +57,10 @@ class AppleMusicController(BaseController):
     def play_pause(self) -> bool:
         """Toggle play/pause state."""
         try:
-            # Try finding the play button by description first
-            play_button = self.device(description="Play or pause")
+            play_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/play_pause"]')
             if not play_button.exists:
-                play_button = self.device(resourceId=f"{self.package_name}:id/play_pause_button")
-
-            if not play_button.exists:
-                screen_w, screen_h = self.device.window_size()
-                play_x = int(0.5 * screen_w)
-                play_y = int(0.9 * screen_h)
-                self.safe_click(play_x / screen_w, play_y / screen_h, "play/pause button")
-                logger.info("Clicked play/pause via coordinates")
-                return True
+                logger.error("Play/pause button not found")
+                return False
 
             play_button.click()
             logger.info("Clicked play/pause button")
@@ -87,17 +73,10 @@ class AppleMusicController(BaseController):
     def next_track(self) -> bool:
         """Skip to next track."""
         try:
-            next_button = self.device(description="Next track")
+            next_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/next_fast_forward"]')
             if not next_button.exists:
-                next_button = self.device(resourceId=f"{self.package_name}:id/next_button")
-
-            if not next_button.exists:
-                screen_w, screen_h = self.device.window_size()
-                next_x = int(0.85 * screen_w)
-                next_y = int(0.9 * screen_h)
-                self.safe_click(next_x / screen_w, next_y / screen_h, "next track button")
-                logger.info("Clicked next track via coordinates")
-                return True
+                logger.error("Next track button not found")
+                return False
 
             next_button.click()
             logger.info("Clicked next track button")
@@ -110,17 +89,10 @@ class AppleMusicController(BaseController):
     def previous_track(self) -> bool:
         """Go to previous track."""
         try:
-            prev_button = self.device(description="Previous track")
+            prev_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/previous_rewind"]')
             if not prev_button.exists:
-                prev_button = self.device(resourceId=f"{self.package_name}:id/previous_button")
-
-            if not prev_button.exists:
-                screen_w, screen_h = self.device.window_size()
-                prev_x = int(0.15 * screen_w)
-                prev_y = int(0.9 * screen_h)
-                self.safe_click(prev_x / screen_w, prev_y / screen_h, "previous track button")
-                logger.info("Clicked previous track via coordinates")
-                return True
+                logger.error("Previous track button not found")
+                return False
 
             prev_button.click()
             logger.info("Clicked previous track button")
@@ -133,20 +105,10 @@ class AppleMusicController(BaseController):
     def like_current_song(self) -> bool:
         """Like the currently playing song."""
         try:
-            like_button = self.device(description="Love")
+            like_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/list_favorite_icon"]')
             if not like_button.exists:
-                like_button = self.device(description="Add to your library")
-
-            if not like_button.exists:
-                like_button = self.device(resourceId=f"{self.package_name}:id/like_button")
-
-            if not like_button.exists:
-                screen_w, screen_h = self.device.window_size()
-                like_x = int(0.1 * screen_w)
-                like_y = int(0.85 * screen_h)
-                self.safe_click(like_x / screen_w, like_y / screen_h, "like button")
-                logger.info("Clicked like button via coordinates")
-                return True
+                logger.error("Like button not found")
+                return False
 
             like_button.click()
             logger.info("Clicked like button")
