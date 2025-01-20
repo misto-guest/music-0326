@@ -18,7 +18,7 @@ class AppleMusicController(BaseController):
         super().__init__(device)
         self.package_name = AppleMusicConfig.PACKAGE_NAME
         self.app_name = AppleMusicConfig.APP_NAME
-        self.isoclipboard_package = "com.example.isolatedclipboard"  # Add IsoClipboard package name
+        self.isoclipboard_package = "com.example.isolatedclipboard"
 
     def start_app(self) -> bool:
         """Start Apple Music app."""
@@ -108,22 +108,7 @@ class AppleMusicController(BaseController):
             logger.error(f"Error going to previous track: {e}")
             return False
 
-    def shuffle(self) -> bool:
-        """Toggle shuffle mode."""
-        try:
-            # Using the exact resource ID
-            shuffle_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/button_shuffle"]')
-            if not shuffle_button.exists:
-                logger.error("Shuffle button not found")
-                return False
-
-            shuffle_button.click()
-            logger.info("Clicked shuffle button")
-            return True
-
-        except Exception as e:
-            logger.error(f"Error toggling shuffle: {e}")
-            return False
+    def like_current_song(self) -> bool:
         """Like the currently playing song."""
         try:
             # Using the exact resource ID
@@ -140,11 +125,28 @@ class AppleMusicController(BaseController):
             logger.error(f"Error liking current song: {e}")
             return False
 
+    def shuffle(self) -> bool:
+        """Toggle shuffle mode."""
+        try:
+            # Using the exact resource ID
+            shuffle_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/button_shuffle"]')
+            if not shuffle_button.exists:
+                logger.error("Shuffle button not found")
+                return False
+
+            shuffle_button.click()
+            logger.info("Clicked shuffle button")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error toggling shuffle: {e}")
+            return False
+
     def handle_isoclipboard(self) -> bool:
         """Handle IsoClipboard for Apple Music."""
         try:
             # Start IsoClipboard app
-            self.device.app_start(self.isoclipboard_package)
+            self.device.app_start("com.example.isolatedclipboard")
             time.sleep(2)
 
             # Click FETCH button using correct resource ID
