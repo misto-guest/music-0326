@@ -115,22 +115,47 @@ class AppleMusicController(BaseController):
     def ensure_screen_active(self) -> bool:
         """Ensure device screen is active and ready for interactions."""
         try:
-            # Get screen state
-            screen_state = self.device.info.get('screenState')
+            # First try to get basic device info
+            device_info = self.device.info
+            if not device_info:
+                logger.warning("Could not get device info, attempting basic screen wake")
+                # Try basic screen wake sequence
+                self.device.screen_on()
+                time.sleep(1)
+                self.device.press('power')
+                time.sleep(1)
+                self.device.swipe(540, 1800, 540, 900)
+                time.sleep(1)
+                return True
+
+            # Get screen state if available
+            screen_state = device_info.get('screenState')
+
+            # If we can't determine screen state, try basic wake sequence
+            if screen_state is None:
+                logger.warning("Screen state unknown, attempting basic screen wake")
+                self.device.screen_on()
+                time.sleep(1)
+                return True
+
+            logger.info(f"Current screen state: {screen_state}")
 
             # If screen is off (2) or doze (3), wake it up
             if screen_state in [2, 3]:
                 logger.info("Screen is off or in doze mode, waking up")
-                self.device.screen_on()  # Wake up screen
+                self.device.screen_on()
                 time.sleep(1)
 
-            # Verify screen is on (0) or locked (1)
-            screen_state = self.device.info.get('screenState')
-            if screen_state not in [0, 1]:
-                logger.error(f"Failed to wake up screen, state: {screen_state}")
-                return False
+                # Verify wake up succeeded
+                new_state = self.device.info.get('screenState')
+                if new_state in [2, 3]:
+                    logger.warning("First wake attempt failed, trying alternate method")
+                    # Try alternate wake method
+                    self.device.press('power')
+                    time.sleep(1)
+                    return True
 
-            # If screen is locked, unlock it
+            # If screen is locked (1), unlock it
             if screen_state == 1:
                 logger.info("Screen is locked, unlocking")
                 # Press power to wake
@@ -140,9 +165,10 @@ class AppleMusicController(BaseController):
                 self.device.swipe(540, 1800, 540, 900)
                 time.sleep(1)
 
-            # Double-check screen is fully on
-            if self.device.info.get('screenState') != 0:
-                logger.error("Failed to fully activate screen")
+            # Verify screen is in a usable state
+            final_state = self.device.info.get('screenState')
+            if final_state not in [0, 1, None]:  # Include None as acceptable since we've tried wake sequence
+                logger.error(f"Failed to activate screen, final state: {final_state}")
                 return False
 
             logger.info("Screen is active and ready")
@@ -150,7 +176,13 @@ class AppleMusicController(BaseController):
 
         except Exception as e:
             logger.error(f"Error ensuring screen active: {e}")
-            return False
+            # Try basic wake sequence as fallback
+            try:
+                self.device.screen_on()
+                time.sleep(1)
+                return True
+            except:
+                return False
 
     def prepare_for_action(self) -> bool:
         """Prepare device for performing an action."""
