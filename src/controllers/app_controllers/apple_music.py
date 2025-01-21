@@ -62,6 +62,10 @@ class AppleMusicController(BaseController):
         self.app_name = AppleMusicConfig.APP_NAME
         self.isoclipboard_package = "com.example.isolatedclipboard"
 
+        # Set up screen settings during initialization
+        if not self.setup_screen_settings():
+            logger.warning("Failed to set up screen settings during initialization")
+
     def check_internet_connection(self, max_retries: int = 5, delay: int = 2) -> bool:
         """Check internet connection using netstat to verify active TCP connections."""
         for attempt in range(max_retries):
@@ -112,77 +116,76 @@ class AppleMusicController(BaseController):
             logger.error(f"Failed to manage window state: {e}", exc_info=True)
             return False
 
-    def ensure_screen_active(self) -> bool:
-        """Ensure device screen is active and ready for interactions."""
+    def unlock_screen(self) -> bool:
+        """Unlock screen without using power button."""
         try:
-            # First try to get basic device info
+            logger.info("Starting screen unlock sequence")
+
+            # Use swipe directly to wake and unlock
+            self.device.swipe(540, 1800, 540, 900)
+            time.sleep(0.5)  # Short delay to verify
+
+            # Verify unlock was successful
+            if self.device(resourceId="android:id/statusBarBackground").exists:
+                logger.info("Screen unlocked successfully")
+                return True
+
+            # If first attempt failed, try using KEYCODE_WAKEUP instead of power button
+            logger.warning("First unlock attempt failed, trying with KEYCODE_WAKEUP")
+            self.device.shell('input keyevent KEYCODE_WAKEUP')
+            time.sleep(0.1)
+            self.device.swipe(540, 1800, 540, 900)
+
+            if self.device(clickable=True).exists:
+                logger.info("Screen appears to be unlocked (found clickable elements)")
+                return True
+
+            logger.error("Failed to unlock screen")
+            return False
+
+        except Exception as e:
+            logger.error(f"Error during screen unlock: {e}")
+            return False
+
+    def setup_screen_settings(self) -> bool:
+        """Setup screen timeout and stay-on settings."""
+        try:
+            logger.info("Setting up screen settings")
+
+            # Set longer screen timeout (30 minutes)
+            self.device.shell('settings put system screen_off_timeout 1800000')
+
+            # Keep screen on while plugged in
+            self.device.shell('settings put global stay_on_while_plugged_in 3')
+
+            # Verify settings
+            timeout = self.device.shell('settings get system screen_off_timeout')
+            if '1800000' in str(timeout):
+                logger.info("Screen settings configured successfully")
+                return True
+            else:
+                logger.error("Failed to verify screen settings")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error setting up screen settings: {e}")
+            return False
+
+    def ensure_screen_active(self) -> bool:
+        """Ensure device screen is active with immediate unlock attempt."""
+        try:
+            # Check initial state
             device_info = self.device.info
-            if not device_info:
-                logger.warning("Could not get device info, attempting basic screen wake")
-                # Try basic screen wake sequence
-                self.device.screen_on()
-                time.sleep(1)
-                self.device.press('power')
-                time.sleep(1)
-                self.device.swipe(540, 1800, 540, 900)
-                time.sleep(1)
-                return True
-
-            # Get screen state if available
-            screen_state = device_info.get('screenState')
-
-            # If we can't determine screen state, try basic wake sequence
-            if screen_state is None:
-                logger.warning("Screen state unknown, attempting basic screen wake")
-                self.device.screen_on()
-                time.sleep(1)
-                return True
+            screen_state = device_info.get('screenState') if device_info else None
 
             logger.info(f"Current screen state: {screen_state}")
 
-            # If screen is off (2) or doze (3), wake it up
-            if screen_state in [2, 3]:
-                logger.info("Screen is off or in doze mode, waking up")
-                self.device.screen_on()
-                time.sleep(1)
-
-                # Verify wake up succeeded
-                new_state = self.device.info.get('screenState')
-                if new_state in [2, 3]:
-                    logger.warning("First wake attempt failed, trying alternate method")
-                    # Try alternate wake method
-                    self.device.press('power')
-                    time.sleep(1)
-                    return True
-
-            # If screen is locked (1), unlock it
-            if screen_state == 1:
-                logger.info("Screen is locked, unlocking")
-                # Press power to wake
-                self.device.press('power')
-                time.sleep(1)
-                # Swipe up to unlock
-                self.device.swipe(540, 1800, 540, 900)
-                time.sleep(1)
-
-            # Verify screen is in a usable state
-            final_state = self.device.info.get('screenState')
-            if final_state not in [0, 1, None]:  # Include None as acceptable since we've tried wake sequence
-                logger.error(f"Failed to activate screen, final state: {final_state}")
-                return False
-
-            logger.info("Screen is active and ready")
-            return True
+            # Always try quick wake-and-swipe sequence
+            return self.unlock_screen()
 
         except Exception as e:
             logger.error(f"Error ensuring screen active: {e}")
-            # Try basic wake sequence as fallback
-            try:
-                self.device.screen_on()
-                time.sleep(1)
-                return True
-            except:
-                return False
+            return self.unlock_screen()  # Try unlock as fallback
 
     def prepare_for_action(self) -> bool:
         """Prepare device for performing an action."""

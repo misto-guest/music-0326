@@ -51,26 +51,32 @@ class MultiMusicAutomation:
             return False
 
     def _apple_initial_setup(self) -> bool:
-        """Initial setup for Apple Music automation."""
+        """Initial setup for Apple Music automation with retry logic."""
         try:
             logger.info("Starting Apple Music initial setup...")
 
             # Step 1: Make sure Apple Music is closed
-            logger.info("Step 1: Closing Apple Music if running")
-            if not self.apple_controller.force_stop():
-                logger.error("Failed to close Apple Music")
-                return False
+            for attempt in range(3):
+                if self.apple_controller.force_stop():
+                    break
+                logger.warning(f"Failed to close Apple Music, attempt {attempt + 1}")
+                time.sleep(2)
             time.sleep(2)
 
             # Step 2: Start IsoClipboard sequence
-            logger.info("Step 2: Starting IsoClipboard sequence")
-            if not self.apple_controller.handle_isoclipboard():
-                logger.error("Failed Apple Music IsoClipboard setup")
-                return False
+            logger.info("Starting IsoClipboard sequence")
+            iso_attempts = 0
+            while iso_attempts < 3:
+                if self.apple_controller.handle_isoclipboard():
+                    self.last_apple_isoclipboard = time.time()
+                    logger.info("Apple Music initial setup completed successfully")
+                    return True
+                logger.warning(f"Failed IsoClipboard setup, attempt {iso_attempts + 1}")
+                time.sleep(2)
+                iso_attempts += 1
 
-            self.last_apple_isoclipboard = time.time()
-            logger.info("Apple Music initial setup completed successfully")
-            return True
+            logger.error("Failed Apple Music IsoClipboard setup after all retries")
+            return False
 
         except Exception as e:
             logger.error(f"Error in Apple Music initial setup: {e}")
@@ -305,7 +311,7 @@ class MultiMusicAutomation:
         logger.info("Started YouTube Music automation")
 
     def start_apple_only(self):
-        """Start Apple Music automation only with proper error handling."""
+        """Start Apple Music automation only."""
         if self.running:
             logger.warning("Automation already running")
             return False
@@ -314,34 +320,58 @@ class MultiMusicAutomation:
             logger.error("No Apple Music controller provided")
             return False
 
-        # Check internet connection before starting
-        if not self.apple_controller.check_internet_connection():
-            logger.error("No internet connection, not starting automation")
-            return False
+        # Initialize retry counter
+        retry_count = 0
+        max_retries = 3
 
-        # Ensure screen is active
-        if not self.apple_controller.ensure_screen_active():
-            logger.error("Failed to ensure screen active, not starting automation")
-            return False
+        while retry_count < max_retries:
+            try:
+                # Check internet connection before starting
+                if not self.apple_controller.check_internet_connection():
+                    logger.error("No internet connection, retrying...")
+                    time.sleep(5)
+                    retry_count += 1
+                    continue
 
-        # Perform initial setup before starting thread
-        if not self._apple_initial_setup():
-            logger.error("Failed Apple Music initial setup, not starting automation")
-            return False
+                # Ensure screen is active with retry logic
+                screen_active_attempts = 0
+                while screen_active_attempts < 3:
+                    if self.apple_controller.ensure_screen_active():
+                        break
+                    logger.warning(f"Screen activation attempt {screen_active_attempts + 1} failed, retrying...")
+                    time.sleep(2)
+                    screen_active_attempts += 1
 
-        self.running = True
-        self.automation_thread = threading.Thread(target=self._apple_automation_loop)
-        self.automation_thread.daemon = True
-        self.automation_thread.start()
+                if screen_active_attempts >= 3:
+                    logger.error("Failed to ensure screen active after multiple attempts")
+                    return False
 
-        # Minimize after starting
-        success = self.apple_controller.manage_window_state(minimize=True)
-        if not success:
-            logger.warning("Failed to minimize window after starting automation")
-            # Don't return False here as automation is already running
+                # Perform initial setup
+                if not self._apple_initial_setup():
+                    logger.error("Failed Apple Music initial setup, retrying...")
+                    retry_count += 1
+                    continue
 
-        logger.info("Started Apple Music automation successfully")
-        return True
+                # Start automation thread
+                self.running = True
+                self.automation_thread = threading.Thread(target=self._apple_automation_loop)
+                self.automation_thread.daemon = True
+                self.automation_thread.start()
+
+                # Minimize after starting
+                if not self.apple_controller.manage_window_state(minimize=True):
+                    logger.warning("Failed to minimize window but automation is running")
+
+                logger.info("Started Apple Music automation successfully")
+                return True
+
+            except Exception as e:
+                logger.error(f"Error during automation start (attempt {retry_count + 1}): {e}")
+                retry_count += 1
+                time.sleep(2)
+
+        logger.error("Failed to start Apple Music automation after all retries")
+        return False
 
     def start_automation(self):
         """Start both apps automation with proper error handling."""
