@@ -169,10 +169,23 @@ class MultiMusicAutomation:
             try:
                 current_time = time.time()
 
+                # Check internet connection
+                if not self.apple_controller.check_internet_connection():
+                    logger.error("No internet connection, waiting...")
+                    time.sleep(60)
+                    continue
+
                 # Handle Apple Music IsoClipboard
                 apple_iso_elapsed = current_time - self.last_apple_isoclipboard
                 if apple_iso_elapsed >= self.get_isoclipboard_delay(is_youtube=False):
                     logger.info("Performing Apple Music IsoClipboard")
+
+                    # Prepare device for IsoClipboard action
+                    if not self.apple_controller.prepare_for_action():
+                        logger.error("Failed to prepare for IsoClipboard action")
+                        time.sleep(30)
+                        continue
+
                     if self.apple_controller.handle_isoclipboard():
                         self.last_apple_isoclipboard = current_time
                         self.last_apple_action = current_time
@@ -180,10 +193,19 @@ class MultiMusicAutomation:
                     else:
                         logger.error("Apple Music IsoClipboard failed")
 
+                    # Minimize after IsoClipboard
+                    self.apple_controller.manage_window_state(minimize=True)
+
                 # Apple Music action
                 action, action_name = self.get_apple_action()
                 delay = self.get_music_control_delay(is_youtube=False)
                 time.sleep(delay)
+
+                # Prepare device for music action
+                if not self.apple_controller.prepare_for_action():
+                    logger.error(f"Failed to prepare for {action_name}")
+                    time.sleep(30)
+                    continue
 
                 logger.info(f"Performing Apple Music action: {action_name}")
                 if action():
@@ -191,6 +213,9 @@ class MultiMusicAutomation:
                     logger.info(f"Apple Music {action_name} successful")
                 else:
                     logger.error(f"Apple Music {action_name} failed")
+
+                # Minimize after action
+                self.apple_controller.manage_window_state(minimize=True)
 
             except Exception as e:
                 logger.error(f"Error in Apple Music automation: {e}")
@@ -280,42 +305,63 @@ class MultiMusicAutomation:
         logger.info("Started YouTube Music automation")
 
     def start_apple_only(self):
-        """Start Apple Music automation only."""
+        """Start Apple Music automation only with proper error handling."""
         if self.running:
             logger.warning("Automation already running")
-            return
+            return False
+
         if not self.apple_controller:
             logger.error("No Apple Music controller provided")
-            return
+            return False
+
+        # Check internet connection before starting
+        if not self.apple_controller.check_internet_connection():
+            logger.error("No internet connection, not starting automation")
+            return False
+
+        # Ensure screen is active
+        if not self.apple_controller.ensure_screen_active():
+            logger.error("Failed to ensure screen active, not starting automation")
+            return False
 
         # Perform initial setup before starting thread
         if not self._apple_initial_setup():
             logger.error("Failed Apple Music initial setup, not starting automation")
-            return
+            return False
 
         self.running = True
         self.automation_thread = threading.Thread(target=self._apple_automation_loop)
         self.automation_thread.daemon = True
         self.automation_thread.start()
+
+        # Minimize after starting
+        success = self.apple_controller.manage_window_state(minimize=True)
+        if not success:
+            logger.warning("Failed to minimize window after starting automation")
+            # Don't return False here as automation is already running
+
         logger.info("Started Apple Music automation successfully")
+        return True
 
-    def stop_automation(self):
-        """Stop the automation process."""
-        if not self.running:
-            logger.warning("Automation not running")
-            return
+    def start_automation(self):
+        """Start both apps automation with proper error handling."""
+        if self.running:
+            logger.warning("Automation already running")
+            return False
 
-        self.running = False
-        if self.automation_thread:
-            self.automation_thread.join()
-            self.automation_thread = None
+        if not self.youtube_controller or not self.apple_controller:
+            logger.error("Both controllers are required for multi-app automation")
+            return False
 
-        # Cleanup
-        if self.youtube_controller:
-            if not self.youtube_controller.force_stop():
-                logger.warning("Failed to close YouTube Music during cleanup")
-        if self.apple_controller:
-            if not self.apple_controller.force_stop():
-                logger.warning("Failed to close Apple Music during cleanup")
+        # Perform initial setup checks
+        if not self._youtube_initial_setup() or not self._apple_initial_setup():
+            logger.error("Failed initial setup, not starting automation")
+            return False
 
-        logger.info("Stopped music automation")
+        self.running = True
+        self.automation_thread = threading.Thread(target=self._both_automation_loop)
+        self.automation_thread.daemon = True
+        self.automation_thread.start()
+
+        logger.info("Started multi-app automation")
+        return True

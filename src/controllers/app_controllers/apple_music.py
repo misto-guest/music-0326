@@ -62,6 +62,119 @@ class AppleMusicController(BaseController):
         self.app_name = AppleMusicConfig.APP_NAME
         self.isoclipboard_package = "com.example.isolatedclipboard"
 
+    def check_internet_connection(self, max_retries: int = 5, delay: int = 2) -> bool:
+        """Check internet connection using netstat to verify active TCP connections."""
+        for attempt in range(max_retries):
+            try:
+                # Get all TCP connections (both IPv4 and IPv6-mapped IPv4)
+                netstat_check = self.device.shell('netstat -n | grep ESTABLISHED | grep -E "^tcp6.*::ffff:|^tcp[^6]"')
+
+                # First check exit code
+                if getattr(netstat_check, 'exit_code', 0) != 0:
+                    logger.warning(
+                        f"Failed to get TCP connections (attempt {attempt + 1}/{max_retries}). "
+                        f"Retrying in {delay}s...")
+                    time.sleep(delay)
+                    continue
+
+                # Get actual output content
+                output = str(getattr(netstat_check, 'output', netstat_check)).strip()
+                if not output:  # Check if output is empty
+                    logger.warning(
+                        f"No TCP connections found (attempt {attempt + 1}/{max_retries}). "
+                        f"Retrying in {delay}s...")
+                    time.sleep(delay)
+                    continue
+
+                connections = output.split('\n')
+                logger.info(f"Found {len(connections)} TCP connections")
+                logger.info(f"Sample connection: {connections[0] if connections else 'None'}")
+                return True
+
+            except Exception as e:
+                logger.error(f"Error checking internet connection: {e}")
+                time.sleep(delay)
+
+        logger.error("Failed to establish internet connection after retries.")
+        return False
+
+    def manage_window_state(self, minimize: bool = True) -> bool:
+        """Manage Apple Music window state."""
+        try:
+            if minimize:
+                self.device.press('home')
+                time.sleep(1)
+            else:
+                self.device.app_start(self.package_name)
+                time.sleep(1)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to manage window state: {e}", exc_info=True)
+            return False
+
+    def ensure_screen_active(self) -> bool:
+        """Ensure device screen is active and ready for interactions."""
+        try:
+            # Get screen state
+            screen_state = self.device.info.get('screenState')
+
+            # If screen is off (2) or doze (3), wake it up
+            if screen_state in [2, 3]:
+                logger.info("Screen is off or in doze mode, waking up")
+                self.device.screen_on()  # Wake up screen
+                time.sleep(1)
+
+            # Verify screen is on (0) or locked (1)
+            screen_state = self.device.info.get('screenState')
+            if screen_state not in [0, 1]:
+                logger.error(f"Failed to wake up screen, state: {screen_state}")
+                return False
+
+            # If screen is locked, unlock it
+            if screen_state == 1:
+                logger.info("Screen is locked, unlocking")
+                # Press power to wake
+                self.device.press('power')
+                time.sleep(1)
+                # Swipe up to unlock
+                self.device.swipe(540, 1800, 540, 900)
+                time.sleep(1)
+
+            # Double-check screen is fully on
+            if self.device.info.get('screenState') != 0:
+                logger.error("Failed to fully activate screen")
+                return False
+
+            logger.info("Screen is active and ready")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error ensuring screen active: {e}")
+            return False
+
+    def prepare_for_action(self) -> bool:
+        """Prepare device for performing an action."""
+        try:
+            # First ensure screen is active
+            if not self.ensure_screen_active():
+                logger.error("Failed to ensure screen active before action")
+                return False
+
+            # Bring app to foreground
+            self.manage_window_state(minimize=False)
+            time.sleep(1)  # Wait for app to come to foreground
+
+            # Verify app is in foreground
+            if not self.is_running():
+                logger.error("App not in foreground after preparation")
+                return False
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error preparing for action: {e}")
+            return False
+
     def start_app(self) -> bool:
         """Start Apple Music app."""
         try:
