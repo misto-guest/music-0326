@@ -60,7 +60,6 @@ class AppleMusicController(BaseController):
     def play_pause(self) -> bool:
         """Toggle play/pause state."""
         try:
-            # Using the exact resource ID
             play_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/play_pause"]')
             if not play_button.exists:
                 logger.error("Play/pause button not found")
@@ -77,7 +76,6 @@ class AppleMusicController(BaseController):
     def next_track(self) -> bool:
         """Skip to next track."""
         try:
-            # Using the exact resource ID
             next_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/next_fast_forward"]')
             if not next_button.exists:
                 logger.error("Next track button not found")
@@ -94,7 +92,6 @@ class AppleMusicController(BaseController):
     def previous_track(self) -> bool:
         """Go to previous track."""
         try:
-            # Using the exact resource ID
             prev_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/previous_rewind"]')
             if not prev_button.exists:
                 logger.error("Previous track button not found")
@@ -111,7 +108,6 @@ class AppleMusicController(BaseController):
     def like_current_song(self) -> bool:
         """Like the currently playing song."""
         try:
-            # Using the exact resource ID
             like_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/list_favorite_icon"]')
             if not like_button.exists:
                 logger.error("Like button not found")
@@ -128,7 +124,6 @@ class AppleMusicController(BaseController):
     def shuffle(self) -> bool:
         """Toggle shuffle mode."""
         try:
-            # Using the exact resource ID
             shuffle_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/button_shuffle"]')
             if not shuffle_button.exists:
                 logger.error("Shuffle button not found")
@@ -157,18 +152,28 @@ class AppleMusicController(BaseController):
 
             fetch_button.click()
             logger.info("Clicked FETCH button")
-            time.sleep(2)  # Wait for clipboard operation
+            time.sleep(15)
 
             # Click shuffle button
             shuffle_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/button_shuffle"]')
-            if shuffle_button.exists:
-                shuffle_button.click()
-                logger.info("Clicked shuffle button")
-                time.sleep(2)
-                return True
+            if not shuffle_button.exists:
+                logger.error("Shuffle button not found")
+                return False
 
-            logger.error("Shuffle button not found")
-            return False
+            shuffle_button.click()
+            logger.info("Clicked shuffle button")
+            time.sleep(3)
+
+            miniplayer = self.device.xpath(
+                '//*[@resource-id="com.apple.android.music:id/miniplayer_shareplay_container"]')
+            if not miniplayer.exists:
+                logger.error("Miniplayer not found")
+                return False
+
+            miniplayer.click()
+            logger.info("Clicked miniplayer")
+            time.sleep(1)
+            return True
 
         except Exception as e:
             logger.error(f"Error with IsoClipboard: {e}")

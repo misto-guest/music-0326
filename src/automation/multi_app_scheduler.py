@@ -55,19 +55,21 @@ class MultiMusicAutomation:
         try:
             logger.info("Starting Apple Music initial setup...")
 
-            # Make sure Apple Music is closed
+            # Step 1: Make sure Apple Music is closed
+            logger.info("Step 1: Closing Apple Music if running")
             if not self.apple_controller.force_stop():
                 logger.error("Failed to close Apple Music")
                 return False
             time.sleep(2)
 
-            # Handle IsoClipboard for Apple Music
+            # Step 2: Start IsoClipboard sequence
+            logger.info("Step 2: Starting IsoClipboard sequence")
             if not self.apple_controller.handle_isoclipboard():
                 logger.error("Failed Apple Music IsoClipboard setup")
                 return False
 
             self.last_apple_isoclipboard = time.time()
-            logger.info("Apple Music initial setup completed")
+            logger.info("Apple Music initial setup completed successfully")
             return True
 
         except Exception as e:
