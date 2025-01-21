@@ -165,11 +165,6 @@ class MultiMusicAutomation:
 
     def _apple_automation_loop(self):
         """Handle Apple Music automation."""
-        if not self._apple_initial_setup():
-            logger.error("Failed Apple Music initial setup, stopping automation")
-            self.running = False
-            return
-
         while self.running:
             try:
                 current_time = time.time()
