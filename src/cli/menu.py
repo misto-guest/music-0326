@@ -62,7 +62,7 @@ class CLI:
             'q': ('Quit', None)
         }
 
-    def start_youtube_automation(self):
+    def start_youtube_automation(self) -> bool:
         """Start YouTube Music automation only."""
         try:
             if not self.automation:
@@ -71,12 +71,22 @@ class CLI:
                     self.controller.app_controllers['youtube_music'],
                     None
                 )
-            self.automation.start_youtube_only()
-            logger.info("YouTube Music automation started successfully")
+
+            success = self.automation.start_youtube_only()
+            if success:
+                logger.info("YouTube Music automation started successfully")
+                return True
+            else:
+                logger.error("Failed to start YouTube Music automation")
+                self.automation = None
+                return False
+
         except Exception as e:
             logger.error(f"Failed to start YouTube Music automation: {e}")
+            self.automation = None
+            return False
 
-    def start_apple_automation(self):
+    def start_apple_automation(self) -> bool:
         """Start Apple Music automation only."""
         try:
             if not self.automation:
@@ -85,12 +95,22 @@ class CLI:
                     None,
                     self.controller.app_controllers['apple_music']
                 )
-            self.automation.start_apple_only()
-            logger.info("Apple Music automation started successfully")
+
+            success = self.automation.start_apple_only()
+            if success:
+                logger.info("Apple Music automation started successfully")
+                return True
+            else:
+                logger.error("Failed to start Apple Music automation")
+                self.automation = None
+                return False
+
         except Exception as e:
             logger.error(f"Failed to start Apple Music automation: {e}")
+            self.automation = None
+            return False
 
-    def start_automation(self):
+    def start_automation(self) -> bool:
         """Start automation for both apps."""
         try:
             if not self.automation:
@@ -99,41 +119,59 @@ class CLI:
                     self.controller.app_controllers['youtube_music'],
                     self.controller.app_controllers['apple_music']
                 )
-            self.automation.start_automation()
-            logger.info("Multi-app automation started successfully")
+
+            success = self.automation.start_automation()
+            if success:
+                logger.info("Multi-app automation started successfully")
+                return True
+            else:
+                logger.error("Failed to start multi-app automation")
+                self.automation = None
+                return False
+
         except Exception as e:
             logger.error(f"Failed to start automation: {e}")
+            self.automation = None
+            return False
 
-    def stop_automation(self):
+    def stop_automation(self) -> bool:
         """Stop the automation process."""
         try:
             if self.automation:
                 self.automation.stop_automation()
                 logger.info("Automation stopped successfully")
+                return True
             else:
                 logger.warning("No automation running to stop")
+                return False
         except Exception as e:
             logger.error(f"Failed to stop automation: {e}")
+            return False
 
-    def show_automation_status(self):
+    def show_automation_status(self) -> bool:
         """Show current automation status."""
-        if self.automation:
-            status = "Running" if self.automation.running else "Stopped"
-            logger.info(f"Automation status: {status}")
-            if self.automation.running:
-                yt_last = time.strftime('%H:%M:%S', time.localtime(self.automation.last_youtube_action))
-                am_last = time.strftime('%H:%M:%S', time.localtime(self.automation.last_apple_action))
-                yt_iso = time.strftime('%H:%M:%S', time.localtime(self.automation.last_youtube_isoclipboard))
-                am_iso = time.strftime('%H:%M:%S', time.localtime(self.automation.last_apple_isoclipboard))
+        try:
+            if self.automation:
+                status = "Running" if self.automation.running else "Stopped"
+                logger.info(f"Automation status: {status}")
+                if self.automation.running:
+                    yt_last = time.strftime('%H:%M:%S', time.localtime(self.automation.last_youtube_action))
+                    am_last = time.strftime('%H:%M:%S', time.localtime(self.automation.last_apple_action))
+                    yt_iso = time.strftime('%H:%M:%S', time.localtime(self.automation.last_youtube_isoclipboard))
+                    am_iso = time.strftime('%H:%M:%S', time.localtime(self.automation.last_apple_isoclipboard))
 
-                if self.automation.youtube_controller:
-                    logger.info(f"Last YouTube Music action: {yt_last}")
-                    logger.info(f"Last YouTube Music IsoClipboard: {yt_iso}")
-                if self.automation.apple_controller:
-                    logger.info(f"Last Apple Music action: {am_last}")
-                    logger.info(f"Last Apple Music IsoClipboard: {am_iso}")
-        else:
-            logger.info("Automation status: Not initialized")
+                    if self.automation.youtube_controller:
+                        logger.info(f"Last YouTube Music action: {yt_last}")
+                        logger.info(f"Last YouTube Music IsoClipboard: {yt_iso}")
+                    if self.automation.apple_controller:
+                        logger.info(f"Last Apple Music action: {am_last}")
+                        logger.info(f"Last Apple Music IsoClipboard: {am_iso}")
+            else:
+                logger.info("Automation status: Not initialized")
+            return True
+        except Exception as e:
+            logger.error(f"Error showing automation status: {e}")
+            return False
 
     def display_menu(self):
         """Display the main menu."""
@@ -169,8 +207,15 @@ class CLI:
 
         try:
             logger.info(f"Executing: {description}")
-            func()
+            result = func()
+
+            # For functions that return success/failure status
+            if isinstance(result, bool):
+                if not result:
+                    logger.error(f"Failed to execute: {description}")
+                return True
             return True
+
         except Exception as e:
             logger.error(f"Error executing {description}: {e}")
             return True
