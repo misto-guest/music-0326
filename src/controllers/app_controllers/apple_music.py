@@ -167,7 +167,6 @@ class AppleMusicController(BaseController):
             logger.error(f"Error liking current song: {e}")
             return False
 
-    @with_error_recovery
     def shuffle(self) -> bool:
         """Toggle shuffle mode with error recovery."""
         try:

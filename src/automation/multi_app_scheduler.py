@@ -122,7 +122,6 @@ class MultiMusicAutomation:
             (self.apple_controller.next_track, "Next track"),
             (self.apple_controller.like_current_song, "Like song"),
             (self.apple_controller.previous_track, "Previous track"),
-            (self.apple_controller.shuffle, "Toggle shuffle")
         ]
         return random.choice(actions)
 
