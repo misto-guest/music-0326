@@ -384,7 +384,19 @@ class YouTubeMusicController(BaseController):
     def bring_to_foreground(self) -> bool:
         """Bring YouTube Music to foreground."""
         try:
-            return bool(self.device.shell(f"am start -n {self.package_name}/{self.activity_name}"))
+            logger.info("Bringing YouTube Music to foreground...")
+            # Use app_activate for bringing to foreground
+            self.device.app_activate(self.package_name)
+            time.sleep(2)  # Wait for app to come to foreground
+
+            # Verify app is in foreground
+            if self.device(packageName=self.package_name).exists:
+                logger.info("YouTube Music brought to foreground successfully")
+                return True
+
+            logger.error("Failed to verify YouTube Music in foreground")
+            return False
+
         except Exception as e:
             logger.error(f"Error bringing YouTube Music to foreground: {e}")
             return False
