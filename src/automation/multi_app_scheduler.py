@@ -247,34 +247,62 @@ class MultiMusicAutomation:
                     delay = self.get_music_control_delay(is_youtube=True)
                     time.sleep(delay)
 
-                    logger.info(f"Performing YouTube Music action: {action_name}")
-                    if action():
-                        self.last_youtube_action = time.time()
-                        self.youtube_controller.device.press("home")
-                        logger.info(f"YouTube Music {action_name} successful")
+                    logger.info(f"Preparing for YouTube Music action: {action_name}")
+                    if self.youtube_controller.prepare_for_action():
+                        logger.info(f"Performing YouTube Music action: {action_name}")
+                        if action():
+                            self.last_youtube_action = time.time()
+                            self.youtube_controller.device.press("home")
+                            logger.info(f"YouTube Music {action_name} successful")
+                        else:
+                            logger.error(f"YouTube Music {action_name} failed")
+                    else:
+                        logger.error("Failed to prepare YouTube Music for action")
 
                 else:
+                    # Apple Music turn
                     action, action_name = self.get_apple_action()
                     delay = self.get_music_control_delay(is_youtube=False)
                     time.sleep(delay)
 
-                    logger.info(f"Performing Apple Music action: {action_name}")
-                    if action():
-                        self.last_apple_action = time.time()
-                        self.apple_controller.device.press("home")
-                        logger.info(f"Apple Music {action_name} successful")
+                    logger.info(f"Preparing for Apple Music action: {action_name}")
+                    if self.apple_controller.prepare_for_action():
+                        logger.info(f"Performing Apple Music action: {action_name}")
+                        if action():
+                            self.last_apple_action = time.time()
+                            self.apple_controller.device.press("home")
+                            logger.info(f"Apple Music {action_name} successful")
+                        else:
+                            logger.error(f"Apple Music {action_name} failed")
+                    else:
+                        logger.error("Failed to prepare Apple Music for action")
 
+                # Handle IsoClipboard actions
                 youtube_iso_elapsed = current_time - self.last_youtube_isoclipboard
                 if youtube_iso_elapsed >= self.get_isoclipboard_delay(is_youtube=True):
-                    if self.youtube_controller.handle_isoclipboard():
-                        self.last_youtube_isoclipboard = time.time()
-                        self.youtube_controller.device.press("home")
+                    logger.info("Preparing for YouTube Music IsoClipboard")
+                    if self.youtube_controller.prepare_for_action():
+                        if self.youtube_controller.handle_isoclipboard():
+                            self.last_youtube_isoclipboard = time.time()
+                            self.youtube_controller.device.press("home")
+                            logger.info("YouTube Music IsoClipboard successful")
+                        else:
+                            logger.error("YouTube Music IsoClipboard failed")
+                    else:
+                        logger.error("Failed to prepare YouTube Music for IsoClipboard")
 
                 apple_iso_elapsed = current_time - self.last_apple_isoclipboard
                 if apple_iso_elapsed >= self.get_isoclipboard_delay(is_youtube=False):
-                    if self.apple_controller.handle_isoclipboard():
-                        self.last_apple_isoclipboard = time.time()
-                        self.apple_controller.device.press("home")
+                    logger.info("Preparing for Apple Music IsoClipboard")
+                    if self.apple_controller.prepare_for_action():
+                        if self.apple_controller.handle_isoclipboard():
+                            self.last_apple_isoclipboard = time.time()
+                            self.apple_controller.device.press("home")
+                            logger.info("Apple Music IsoClipboard successful")
+                        else:
+                            logger.error("Apple Music IsoClipboard failed")
+                    else:
+                        logger.error("Failed to prepare Apple Music for IsoClipboard")
 
             except Exception as e:
                 logger.error(f"Error in automation: {e}")
@@ -379,6 +407,20 @@ class MultiMusicAutomation:
             logger.error("Failed initial setup, not starting automation")
             return False
 
+        # Initialize all timers
+        current_time = time.time()
+        self.last_youtube_action = current_time
+        self.last_apple_action = current_time
+        self.last_youtube_isoclipboard = current_time
+        self.last_apple_isoclipboard = current_time
+
+        # Log initial delays (calling the methods directly in the logging)
+        logger.info(f"Next YouTube Music IsoClipboard action in {self.get_isoclipboard_delay(is_youtube=True) // 60}m")
+        logger.info(f"Next Apple Music IsoClipboard action in {self.get_isoclipboard_delay(is_youtube=False) // 60}m")
+        logger.info(f"Next YouTube Music action in {self.get_music_control_delay(is_youtube=True) // 60}m")
+        logger.info(f"Next Apple Music action in {self.get_music_control_delay(is_youtube=False) // 60}m")
+
+        # Start automation
         self.running = True
         self.automation_thread = threading.Thread(target=self._both_automation_loop)
         self.automation_thread.daemon = True

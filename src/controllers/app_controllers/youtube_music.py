@@ -352,3 +352,39 @@ class YouTubeMusicController(BaseController):
         except Exception as e:
             logger.error(f"Error force stopping YouTube Music: {e}")
             return False
+
+    def prepare_for_action(self) -> bool:
+        """Prepare YouTube Music for an action."""
+        try:
+            logger.info("Preparing YouTube Music for action...")
+
+            # Check if app is running and start if needed
+            if not self.is_running():
+                logger.info("YouTube Music not running, starting app...")
+                if not self.start_app():
+                    logger.error("Failed to start YouTube Music")
+                    return False
+                time.sleep(2)  # Wait for app to start
+
+            # Ensure app is in foreground
+            if not self.bring_to_foreground():
+                logger.error("Failed to bring YouTube Music to foreground")
+                return False
+
+            # Wait for UI to be ready
+            time.sleep(1)
+
+            logger.info("YouTube Music ready for action")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error preparing YouTube Music: {e}")
+            return False
+
+    def bring_to_foreground(self) -> bool:
+        """Bring YouTube Music to foreground."""
+        try:
+            return bool(self.device.shell(f"am start -n {self.package_name}/{self.activity_name}"))
+        except Exception as e:
+            logger.error(f"Error bringing YouTube Music to foreground: {e}")
+            return False
