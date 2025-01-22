@@ -361,8 +361,13 @@ class AppleMusicController(BaseController):
             miniplayer = self.device.xpath(
                 '//*[@resource-id="com.apple.android.music:id/miniplayer_shareplay_container"]')
             if not miniplayer.exists:
-                logger.error("Miniplayer not found")
-                return False
+                miniplayer = self.device.xpath('//*[@resource-id="com.apple.android.music:id/mini_player"]')
+                if not miniplayer.exists:
+                    miniplayer = self.device.xpath('//*[contains(@resource-id, "miniplayer")]')
+                    if not miniplayer.exists:
+                        logger.error("Miniplayer not found after trying multiple selectors")
+                        return False
+
 
             miniplayer.click()
             logger.info("Clicked miniplayer")
