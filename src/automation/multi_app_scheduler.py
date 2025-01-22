@@ -386,3 +386,28 @@ class MultiMusicAutomation:
 
         logger.info("Started multi-app automation")
         return True
+
+    def stop_automation(self):
+        """Stop the automation process."""
+        try:
+            if self.running:
+                logger.info("Stopping automation...")
+                self.running = False
+
+                # Wait for automation thread to finish
+                if self.automation_thread and self.automation_thread.is_alive():
+                    self.automation_thread.join(timeout=5)
+
+                # Reset timers
+                self.last_youtube_action = 0
+                self.last_apple_action = 0
+                self.last_youtube_isoclipboard = 0
+                self.last_apple_isoclipboard = 0
+
+                logger.info("Automation stopped successfully")
+            else:
+                logger.warning("No automation running to stop")
+
+        except Exception as e:
+            logger.error(f"Failed to stop automation: {e}")
+            raise
