@@ -71,8 +71,18 @@ class MultiMusicAutomation:
             while iso_attempts < 3:
                 if self.apple_controller.handle_isoclipboard():
                     self.last_apple_isoclipboard = time.time()
+
+                    time.sleep(2)
+
+                    logger.info("Minimizing Apple Music window after setup...")
+                    if not self.apple_controller.manage_window_state(minimize=True):
+                        logger.warning("Failed to minimize Apple Music window")
+                    else:
+                        logger.info("Successfully minimized Apple Music window")
+
                     logger.info("Apple Music initial setup completed successfully")
                     return True
+
                 logger.warning(f"Failed IsoClipboard setup, attempt {iso_attempts + 1}")
                 time.sleep(2)
                 iso_attempts += 1
@@ -226,34 +236,11 @@ class MultiMusicAutomation:
                 logger.error(f"Error in Apple Music automation: {e}")
                 time.sleep(60)
 
-    def start_automation(self):
-        """Start both apps automation."""
-        if self.running:
-            logger.warning("Automation already running")
-            return
-
-        if not self.youtube_controller or not self.apple_controller:
-            logger.error("Both controllers are required for multi-app automation")
-            return
-
-        self.running = True
-        self.automation_thread = threading.Thread(target=self._both_automation_loop)
-        self.automation_thread.daemon = True
-        self.automation_thread.start()
-        logger.info("Started multi-app automation")
-
     def _both_automation_loop(self):
-        """Handle automation for both apps."""
-        if not self._youtube_initial_setup() or not self._apple_initial_setup():
-            logger.error("Failed initial setup, stopping automation")
-            self.running = False
-            return
-
         while self.running:
             try:
                 current_time = time.time()
 
-                # Alternate between apps based on last action time
                 if current_time - self.last_youtube_action > current_time - self.last_apple_action:
                     # YouTube Music turn
                     action, action_name = self.get_youtube_action()
@@ -263,11 +250,10 @@ class MultiMusicAutomation:
                     logger.info(f"Performing YouTube Music action: {action_name}")
                     if action():
                         self.last_youtube_action = time.time()
+                        self.youtube_controller.device.press("home")
                         logger.info(f"YouTube Music {action_name} successful")
-                    else:
-                        logger.error(f"YouTube Music {action_name} failed")
+
                 else:
-                    # Apple Music turn
                     action, action_name = self.get_apple_action()
                     delay = self.get_music_control_delay(is_youtube=False)
                     time.sleep(delay)
@@ -275,20 +261,20 @@ class MultiMusicAutomation:
                     logger.info(f"Performing Apple Music action: {action_name}")
                     if action():
                         self.last_apple_action = time.time()
+                        self.apple_controller.device.press("home")
                         logger.info(f"Apple Music {action_name} successful")
-                    else:
-                        logger.error(f"Apple Music {action_name} failed")
 
-                # Handle IsoClipboard for both apps
                 youtube_iso_elapsed = current_time - self.last_youtube_isoclipboard
                 if youtube_iso_elapsed >= self.get_isoclipboard_delay(is_youtube=True):
                     if self.youtube_controller.handle_isoclipboard():
                         self.last_youtube_isoclipboard = time.time()
+                        self.youtube_controller.device.press("home")
 
                 apple_iso_elapsed = current_time - self.last_apple_isoclipboard
                 if apple_iso_elapsed >= self.get_isoclipboard_delay(is_youtube=False):
                     if self.apple_controller.handle_isoclipboard():
                         self.last_apple_isoclipboard = time.time()
+                        self.apple_controller.device.press("home")
 
             except Exception as e:
                 logger.error(f"Error in automation: {e}")
