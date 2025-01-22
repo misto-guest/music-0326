@@ -27,22 +27,24 @@ class MultiMusicAutomation:
         self.last_apple_isoclipboard = time.time()
 
     def _youtube_initial_setup(self) -> bool:
-        """Initial setup for YouTube Music automation."""
         try:
             logger.info("Starting YouTube Music initial setup...")
 
-            # Make sure YT Music is closed
             if not self.youtube_controller.force_stop():
                 logger.error("Failed to close YouTube Music")
                 return False
             time.sleep(2)
 
-            # Handle IsoClipboard for YT Music
             if not self.youtube_controller.handle_isoclipboard():
                 logger.error("Failed YouTube Music IsoClipboard setup")
                 return False
 
             self.last_youtube_isoclipboard = time.time()
+
+            # Minimize window
+            if not self.youtube_controller.manage_window_state(minimize=True):
+                logger.warning("Failed to minimize YouTube Music window")
+
             logger.info("YouTube Music initial setup completed")
             return True
 
@@ -133,11 +135,6 @@ class MultiMusicAutomation:
 
     def _youtube_automation_loop(self):
         """Handle YouTube Music automation."""
-        if not self._youtube_initial_setup():
-            logger.error("Failed YouTube Music initial setup, stopping automation")
-            self.running = False
-            return
-
         while self.running:
             try:
                 current_time = time.time()
@@ -149,6 +146,7 @@ class MultiMusicAutomation:
                     if self.youtube_controller.handle_isoclipboard():
                         self.last_youtube_isoclipboard = current_time
                         self.last_youtube_action = current_time
+                        self.youtube_controller.device.press("home")  # Minimize after IsoClipboard
                         logger.info("YouTube Music IsoClipboard successful")
                     else:
                         logger.error("YouTube Music IsoClipboard failed")
@@ -161,6 +159,7 @@ class MultiMusicAutomation:
                 logger.info(f"Performing YouTube Music action: {action_name}")
                 if action():
                     self.last_youtube_action = time.time()
+                    self.youtube_controller.device.press("home")  # Minimize after action
                     logger.info(f"YouTube Music {action_name} successful")
                 else:
                     logger.error(f"YouTube Music {action_name} failed")
@@ -296,19 +295,25 @@ class MultiMusicAutomation:
                 time.sleep(60)
 
     def start_youtube_only(self):
-        """Start YouTube Music automation only."""
-        if self.running:
-            logger.warning("Automation already running")
-            return
-        if not self.youtube_controller:
-            logger.error("No YouTube Music controller provided")
-            return
+        if self.running or not self.youtube_controller:
+            return False
 
-        self.running = True
-        self.automation_thread = threading.Thread(target=self._youtube_automation_loop)
-        self.automation_thread.daemon = True
-        self.automation_thread.start()
-        logger.info("Started YouTube Music automation")
+        try:
+            # Single setup attempt
+            if not self.youtube_controller.start_initial_automation():
+                return False
+
+            self.running = True
+            self.last_youtube_isoclipboard = time.time()
+            self.automation_thread = threading.Thread(target=self._youtube_automation_loop)
+            self.automation_thread.daemon = True
+            self.automation_thread.start()
+            logger.info("Started YouTube Music automation")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error starting YouTube Music automation: {e}")
+            return False
 
     def start_apple_only(self):
         """Start Apple Music automation only."""

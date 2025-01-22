@@ -43,6 +43,19 @@ class YouTubeMusicController(BaseController):
             logger.error(f"Error ensuring screen is active: {e}")
             return False
 
+    def manage_window_state(self, minimize: bool = True) -> bool:
+        try:
+            if minimize:
+                self.device.press("home")
+                logger.info("Minimized YouTube Music window")
+            else:
+                self.device.app_start(self.package_name)
+                logger.info("Maximized YouTube Music window")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to manage window state: {e}")
+            return False
+
     def close_youtube_music(self) -> bool:
         """Close YouTube Music app if it's running."""
         try:
@@ -91,20 +104,41 @@ class YouTubeMusicController(BaseController):
             return False
 
     def check_internet_connection(self, max_retries: int = 5, delay: int = 2) -> bool:
+        """Check internet connection using netstat to verify active TCP connections.
+
+        Args:
+            max_retries: Maximum number of retry attempts
+            delay: Delay in seconds between retries
+
+        Returns:
+            bool: True if internet connection is available, False otherwise
+        """
         for attempt in range(max_retries):
             try:
-                ping_response = self.device.shell('ping -c 1 -W 1 8.8.8.8')
-                ping_output = str(ping_response).strip()
+                # Get all TCP connections (both IPv4 and IPv6-mapped IPv4)
+                netstat_check = self.device.shell('netstat -n | grep ESTABLISHED | grep -E "^tcp6.*::ffff:|^tcp[^6]"')
 
-                logger.info(f"Ping result: {ping_output}")
+                # First check exit code
+                if getattr(netstat_check, 'exit_code', 0) != 0:
+                    logger.warning(
+                        f"Failed to get TCP connections (attempt {attempt + 1}/{max_retries}). "
+                        f"Retrying in {delay}s...")
+                    time.sleep(delay)
+                    continue
 
-                if 'bytes from 8.8.8.8' in ping_output or '1 packets transmitted, 1 received' in ping_output:
-                    logger.info("Internet connection available via ping.")
-                    return True
+                # Get actual output content
+                output = str(getattr(netstat_check, 'output', netstat_check)).strip()
+                if not output:  # Check if output is empty
+                    logger.warning(
+                        f"No TCP connections found (attempt {attempt + 1}/{max_retries}). "
+                        f"Retrying in {delay}s...")
+                    time.sleep(delay)
+                    continue
 
-                logger.warning(
-                    f"No internet connection detected (attempt {attempt + 1}/{max_retries}). Retrying in {delay}s...")
-                time.sleep(delay)
+                connections = output.split('\n')
+                logger.info(f"Found {len(connections)} TCP connections")
+                logger.info(f"Sample connection: {connections[0] if connections else 'None'}")
+                return True
 
             except Exception as e:
                 logger.error(f"Error checking internet connection: {e}")
@@ -114,32 +148,27 @@ class YouTubeMusicController(BaseController):
         return False
 
     def handle_isoclipboard(self) -> bool:
-        """Handle IsoClipboard interaction."""
         try:
-            # Start IsoClipboard app
             self.device.app_start(self.isoclipboard_package)
             time.sleep(2)
+
             fetch_button = self.device(resourceId=f"{self.isoclipboard_package}:id/buttonFetchUrl4")
             if not fetch_button.exists:
-                logger.error("FETCH button not found")
                 return False
+
             fetch_button.click()
             logger.info("Clicked FETCH")
+
             if not self.check_internet_connection():
-                logger.error("No internet connection available")
-                self.device.shell('am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS')
-                self.device.shell('am start -n com.android.settings/.Settings')
                 return False
 
             time.sleep(3)
 
             try:
-                self.device.xpath(
-                    '//*[@resource-id="com.google.android.apps.youtube.music:id/elements_container"]'
-                    '/android.view.ViewGroup[1]/android.view.ViewGroup[6]/android.widget.ImageView[1]').click()
+                self.device.xpath('//*[@resource-id="com.google.android.apps.youtube.music:id/elements_container"]'
+                                  '/android.view.ViewGroup[1]/android.view.ViewGroup[6]/android.widget.ImageView[1]').click()
                 logger.info("Clicked using direct XPath")
             except:
-                logger.warning("XPath 3dots failed, trying coordinates")
                 self.device.click(835, 1135)
                 logger.info("Clicked using coordinates")
 
@@ -147,19 +176,22 @@ class YouTubeMusicController(BaseController):
             shuffle_button = self.device(text="Shuffle play", packageName=self.package_name)
             if shuffle_button.exists:
                 shuffle_button.click()
-                logger.info("Clicked Shuffle play using text selector")
+                logger.info("Clicked Shuffle play")
                 time.sleep(5)
+                # Press home to minimize after shuffle
+                self.device.press("home")
                 return True
 
-            shuffle_xpath = ('//*[@resource-id="com.google.android.apps.youtube.music:id/bottom_sheet_list"]'
-                             '/android.widget.FrameLayout[1]')
+            shuffle_xpath = '//*[@resource-id="com.google.android.apps.youtube.music:id/bottom_sheet_list"]/android.widget.FrameLayout[1]'
             shuffle_element = self.device.xpath(shuffle_xpath)
             if shuffle_element.exists:
                 shuffle_element.click()
-                logger.info("Clicked shuffle button using XPath")
+                logger.info("Clicked shuffle button")
+                time.sleep(5)
+                # Press home to minimize after shuffle
+                self.device.press("home")
                 return True
 
-            logger.error("Shuffle button not found using any method")
             return False
         except Exception as e:
             logger.error(f"Error with IsoClipboard: {e}")
