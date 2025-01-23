@@ -385,8 +385,7 @@ class YouTubeMusicController(BaseController):
         """Bring YouTube Music to foreground."""
         try:
             logger.info("Bringing YouTube Music to foreground...")
-            # Use app_activate for bringing to foreground
-            self.device.app_activate(self.package_name)
+            self.device.app_start(self.package_name)
             time.sleep(2)  # Wait for app to come to foreground
 
             # Verify app is in foreground
