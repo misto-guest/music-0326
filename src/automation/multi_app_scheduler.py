@@ -3,20 +3,24 @@
 import random
 import threading
 import time
-from typing import Dict, Optional, List, Tuple, Callable
+from typing import Optional, List, Tuple, Callable
+
 from src.utils.logging_utils import setup_logger
 from src.controllers.app_controllers.youtube_music import YouTubeMusicController
 from src.controllers.app_controllers.apple_music import AppleMusicController
+# Import MutexMixin and its decorators
+from src.controllers.mutex_mixin import MutexMixin, with_device_lock
 
 logger = setup_logger(__name__)
 
+class MultiMusicAutomation(MutexMixin):
+    """Handles automation for multiple music apps with device-wide mutex control."""
 
-class MultiMusicAutomation:
-    """Handles automation for multiple music apps."""
-
-    def __init__(self, youtube_controller: Optional[YouTubeMusicController] = None,
+    def __init__(self,
+                 youtube_controller: Optional[YouTubeMusicController] = None,
                  apple_controller: Optional[AppleMusicController] = None):
         """Initialize automation with controllers."""
+        super().__init__()  # Initialize MutexMixin internals
         self.youtube_controller = youtube_controller
         self.apple_controller = apple_controller
         self.running = False
@@ -26,23 +30,34 @@ class MultiMusicAutomation:
         self.last_youtube_isoclipboard = time.time()
         self.last_apple_isoclipboard = time.time()
 
+    # -----------------------------------
+    # Helper to wrap device interactions
+    # -----------------------------------
+    @with_device_lock
+    def _run_device_locked(self, func: Callable, *args, **kwargs):
+        """
+        All UI-interacting calls go here to ensure only one
+        thread can manipulate the device at a time.
+        """
+        return func(*args, **kwargs)
+
     def _youtube_initial_setup(self) -> bool:
         try:
             logger.info("Starting YouTube Music initial setup...")
 
-            if not self.youtube_controller.force_stop():
+            # Wrap device calls with the mutex
+            if not self._run_device_locked(self.youtube_controller.force_stop):
                 logger.error("Failed to close YouTube Music")
                 return False
             time.sleep(2)
 
-            if not self.youtube_controller.handle_isoclipboard():
+            if not self._run_device_locked(self.youtube_controller.handle_isoclipboard):
                 logger.error("Failed YouTube Music IsoClipboard setup")
                 return False
-
             self.last_youtube_isoclipboard = time.time()
 
             # Minimize window
-            if not self.youtube_controller.manage_window_state(minimize=True):
+            if not self._run_device_locked(self.youtube_controller.manage_window_state, minimize=True):
                 logger.warning("Failed to minimize YouTube Music window")
 
             logger.info("YouTube Music initial setup completed")
@@ -59,7 +74,8 @@ class MultiMusicAutomation:
 
             # Step 1: Make sure Apple Music is closed
             for attempt in range(3):
-                if self.apple_controller.force_stop():
+                # Wrap with device lock
+                if self._run_device_locked(self.apple_controller.force_stop):
                     break
                 logger.warning(f"Failed to close Apple Music, attempt {attempt + 1}")
                 time.sleep(2)
@@ -69,13 +85,12 @@ class MultiMusicAutomation:
             logger.info("Starting IsoClipboard sequence")
             iso_attempts = 0
             while iso_attempts < 3:
-                if self.apple_controller.handle_isoclipboard():
+                if self._run_device_locked(self.apple_controller.handle_isoclipboard):
                     self.last_apple_isoclipboard = time.time()
-
                     time.sleep(2)
 
                     logger.info("Minimizing Apple Music window after setup...")
-                    if not self.apple_controller.manage_window_state(minimize=True):
+                    if not self._run_device_locked(self.apple_controller.manage_window_state, minimize=True):
                         logger.warning("Failed to minimize Apple Music window")
                     else:
                         logger.info("Successfully minimized Apple Music window")
@@ -95,7 +110,7 @@ class MultiMusicAutomation:
             return False
 
     def get_isoclipboard_delay(self, is_youtube: bool = True) -> int:
-        """Get random delay between actions."""
+        """Get random delay between iso-clipboard actions."""
         if is_youtube:
             minutes = random.randint(22, 33)  # 22-33 minutes for YouTube
         else:
@@ -108,11 +123,13 @@ class MultiMusicAutomation:
         return seconds
 
     def get_music_control_delay(self, is_youtube: bool = True) -> int:
-        """Get random delay between actions."""
+        """Get random delay for music-control actions."""
         if is_youtube:
-            seconds = random.randint(45, 6 * 60)  # 45s to 6m for YouTube
+            # 45s to 6m for YouTube
+            seconds = random.randint(45, 6 * 60)
         else:
-            seconds = random.randint(60, 7 * 60)  # 1m to 7m for Apple Music
+            # 1m to 7m for Apple Music
+            seconds = random.randint(60, 7 * 60)
 
         minutes = seconds // 60
         remaining_seconds = seconds % 60
@@ -125,7 +142,7 @@ class MultiMusicAutomation:
             logger.info(f"Next {app_name} action in {seconds}s (at {next_time})")
         return seconds
 
-    def get_youtube_action(self) -> tuple[Callable, str]:
+    def get_youtube_action(self) -> Tuple[Callable, str]:
         """Get random YouTube Music action."""
         actions = [
             (self.youtube_controller.next_track, "Next track"),
@@ -134,7 +151,7 @@ class MultiMusicAutomation:
         ]
         return random.choice(actions)
 
-    def get_apple_action(self) -> tuple[Callable, str]:
+    def get_apple_action(self) -> Tuple[Callable, str]:
         """Get random Apple Music action."""
         actions = [
             (self.apple_controller.next_track, "Next track"),
@@ -149,27 +166,29 @@ class MultiMusicAutomation:
             try:
                 current_time = time.time()
 
-                # Handle YouTube Music IsoClipboard
+                # Check if it's time for IsoClipboard
                 youtube_iso_elapsed = current_time - self.last_youtube_isoclipboard
-                if youtube_iso_elapsed >= self.get_isoclipboard_delay(is_youtube=True):
+                iso_delay = self.get_isoclipboard_delay(is_youtube=True)
+                if youtube_iso_elapsed >= iso_delay:
                     logger.info("Performing YouTube Music IsoClipboard")
-                    if self.youtube_controller.handle_isoclipboard():
-                        self.last_youtube_isoclipboard = current_time
-                        self.last_youtube_action = current_time
-                        self.youtube_controller.device.press("home")  # Minimize after IsoClipboard
+                    if self._run_device_locked(self.youtube_controller.handle_isoclipboard):
+                        self.last_youtube_isoclipboard = time.time()
+                        self.last_youtube_action = time.time()
+                        # After finishing, press home under device lock
+                        self._run_device_locked(self.youtube_controller.device.press, "home")
                         logger.info("YouTube Music IsoClipboard successful")
                     else:
                         logger.error("YouTube Music IsoClipboard failed")
 
-                # YouTube Music action
+                # Perform YouTube Music action
                 action, action_name = self.get_youtube_action()
                 delay = self.get_music_control_delay(is_youtube=True)
                 time.sleep(delay)
 
                 logger.info(f"Performing YouTube Music action: {action_name}")
-                if action():
+                if self._run_device_locked(action):
                     self.last_youtube_action = time.time()
-                    self.youtube_controller.device.press("home")  # Minimize after action
+                    self._run_device_locked(self.youtube_controller.device.press, "home")
                     logger.info(f"YouTube Music {action_name} successful")
                 else:
                     logger.error(f"YouTube Music {action_name} failed")
@@ -185,62 +204,65 @@ class MultiMusicAutomation:
                 current_time = time.time()
 
                 # Check internet connection
-                if not self.apple_controller.check_internet_connection():
+                if not self._run_device_locked(self.apple_controller.check_internet_connection):
                     logger.error("No internet connection, waiting...")
                     time.sleep(60)
                     continue
 
-                # Handle Apple Music IsoClipboard
+                # Check if it's time for IsoClipboard
                 apple_iso_elapsed = current_time - self.last_apple_isoclipboard
-                if apple_iso_elapsed >= self.get_isoclipboard_delay(is_youtube=False):
+                iso_delay = self.get_isoclipboard_delay(is_youtube=False)
+                if apple_iso_elapsed >= iso_delay:
                     logger.info("Performing Apple Music IsoClipboard")
 
                     # Prepare device for IsoClipboard action
-                    if not self.apple_controller.prepare_for_action():
+                    if not self._run_device_locked(self.apple_controller.prepare_for_action):
                         logger.error("Failed to prepare for IsoClipboard action")
                         time.sleep(30)
                         continue
 
-                    if self.apple_controller.handle_isoclipboard():
-                        self.last_apple_isoclipboard = current_time
-                        self.last_apple_action = current_time
+                    if self._run_device_locked(self.apple_controller.handle_isoclipboard):
+                        self.last_apple_isoclipboard = time.time()
+                        self.last_apple_action = time.time()
                         logger.info("Apple Music IsoClipboard successful")
                     else:
                         logger.error("Apple Music IsoClipboard failed")
 
                     # Minimize after IsoClipboard
-                    self.apple_controller.manage_window_state(minimize=True)
+                    self._run_device_locked(self.apple_controller.manage_window_state, minimize=True)
 
-                # Apple Music action
+                # Perform Apple Music action
                 action, action_name = self.get_apple_action()
                 delay = self.get_music_control_delay(is_youtube=False)
                 time.sleep(delay)
 
                 # Prepare device for music action
-                if not self.apple_controller.prepare_for_action():
+                if not self._run_device_locked(self.apple_controller.prepare_for_action):
                     logger.error(f"Failed to prepare for {action_name}")
                     time.sleep(30)
                     continue
 
                 logger.info(f"Performing Apple Music action: {action_name}")
-                if action():
+                if self._run_device_locked(action):
                     self.last_apple_action = time.time()
                     logger.info(f"Apple Music {action_name} successful")
                 else:
                     logger.error(f"Apple Music {action_name} failed")
 
                 # Minimize after action
-                self.apple_controller.manage_window_state(minimize=True)
+                self._run_device_locked(self.apple_controller.manage_window_state, minimize=True)
 
             except Exception as e:
                 logger.error(f"Error in Apple Music automation: {e}")
                 time.sleep(60)
 
     def _both_automation_loop(self):
+        """Handle automation for both apps together, switching turns."""
         while self.running:
             try:
                 current_time = time.time()
 
+                # Decide which app's turn it is based on last action time
                 if current_time - self.last_youtube_action > current_time - self.last_apple_action:
                     # YouTube Music turn
                     action, action_name = self.get_youtube_action()
@@ -248,11 +270,12 @@ class MultiMusicAutomation:
                     time.sleep(delay)
 
                     logger.info(f"Preparing for YouTube Music action: {action_name}")
-                    if self.youtube_controller.prepare_for_action():
+                    if self._run_device_locked(self.youtube_controller.prepare_for_action):
                         logger.info(f"Performing YouTube Music action: {action_name}")
-                        if action():
+                        if self._run_device_locked(action):
                             self.last_youtube_action = time.time()
-                            self.youtube_controller.device.press("home")
+                            # Press home after finishing
+                            self._run_device_locked(self.youtube_controller.device.press, "home")
                             logger.info(f"YouTube Music {action_name} successful")
                         else:
                             logger.error(f"YouTube Music {action_name} failed")
@@ -266,38 +289,40 @@ class MultiMusicAutomation:
                     time.sleep(delay)
 
                     logger.info(f"Preparing for Apple Music action: {action_name}")
-                    if self.apple_controller.prepare_for_action():
+                    if self._run_device_locked(self.apple_controller.prepare_for_action):
                         logger.info(f"Performing Apple Music action: {action_name}")
-                        if action():
+                        if self._run_device_locked(action):
                             self.last_apple_action = time.time()
-                            self.apple_controller.device.press("home")
+                            # Press home after finishing
+                            self._run_device_locked(self.apple_controller.device.press, "home")
                             logger.info(f"Apple Music {action_name} successful")
                         else:
                             logger.error(f"Apple Music {action_name} failed")
                     else:
                         logger.error("Failed to prepare Apple Music for action")
 
-                # Handle IsoClipboard actions
+                # Handle IsoClipboard for YouTube
                 youtube_iso_elapsed = current_time - self.last_youtube_isoclipboard
                 if youtube_iso_elapsed >= self.get_isoclipboard_delay(is_youtube=True):
                     logger.info("Preparing for YouTube Music IsoClipboard")
-                    if self.youtube_controller.prepare_for_action():
-                        if self.youtube_controller.handle_isoclipboard():
+                    if self._run_device_locked(self.youtube_controller.prepare_for_action):
+                        if self._run_device_locked(self.youtube_controller.handle_isoclipboard):
                             self.last_youtube_isoclipboard = time.time()
-                            self.youtube_controller.device.press("home")
+                            self._run_device_locked(self.youtube_controller.device.press, "home")
                             logger.info("YouTube Music IsoClipboard successful")
                         else:
                             logger.error("YouTube Music IsoClipboard failed")
                     else:
                         logger.error("Failed to prepare YouTube Music for IsoClipboard")
 
+                # Handle IsoClipboard for Apple
                 apple_iso_elapsed = current_time - self.last_apple_isoclipboard
                 if apple_iso_elapsed >= self.get_isoclipboard_delay(is_youtube=False):
                     logger.info("Preparing for Apple Music IsoClipboard")
-                    if self.apple_controller.prepare_for_action():
-                        if self.apple_controller.handle_isoclipboard():
+                    if self._run_device_locked(self.apple_controller.prepare_for_action):
+                        if self._run_device_locked(self.apple_controller.handle_isoclipboard):
                             self.last_apple_isoclipboard = time.time()
-                            self.apple_controller.device.press("home")
+                            self._run_device_locked(self.apple_controller.device.press, "home")
                             logger.info("Apple Music IsoClipboard successful")
                         else:
                             logger.error("Apple Music IsoClipboard failed")
@@ -309,12 +334,13 @@ class MultiMusicAutomation:
                 time.sleep(60)
 
     def start_youtube_only(self):
+        """Start only the YouTube Music automation loop."""
         if self.running or not self.youtube_controller:
             return False
 
         try:
             # Single setup attempt
-            if not self.youtube_controller.start_initial_automation():
+            if not self._run_device_locked(self.youtube_controller.start_initial_automation):
                 return False
 
             self.running = True
@@ -330,7 +356,7 @@ class MultiMusicAutomation:
             return False
 
     def start_apple_only(self):
-        """Start Apple Music automation only."""
+        """Start only the Apple Music automation loop."""
         if self.running:
             logger.warning("Automation already running")
             return False
@@ -346,7 +372,7 @@ class MultiMusicAutomation:
         while retry_count < max_retries:
             try:
                 # Check internet connection before starting
-                if not self.apple_controller.check_internet_connection():
+                if not self._run_device_locked(self.apple_controller.check_internet_connection):
                     logger.error("No internet connection, retrying...")
                     time.sleep(5)
                     retry_count += 1
@@ -355,7 +381,7 @@ class MultiMusicAutomation:
                 # Ensure screen is active with retry logic
                 screen_active_attempts = 0
                 while screen_active_attempts < 3:
-                    if self.apple_controller.ensure_screen_active():
+                    if self._run_device_locked(self.apple_controller.ensure_screen_active):
                         break
                     logger.warning(f"Screen activation attempt {screen_active_attempts + 1} failed, retrying...")
                     time.sleep(2)
@@ -378,7 +404,7 @@ class MultiMusicAutomation:
                 self.automation_thread.start()
 
                 # Minimize after starting
-                if not self.apple_controller.manage_window_state(minimize=True):
+                if not self._run_device_locked(self.apple_controller.manage_window_state, minimize=True):
                     logger.warning("Failed to minimize window but automation is running")
 
                 logger.info("Started Apple Music automation successfully")
@@ -414,11 +440,12 @@ class MultiMusicAutomation:
         self.last_youtube_isoclipboard = current_time
         self.last_apple_isoclipboard = current_time
 
-        # Log initial delays (calling the methods directly in the logging)
-        logger.info(f"Next YouTube Music IsoClipboard action in {self.get_isoclipboard_delay(is_youtube=True) // 60}m")
-        logger.info(f"Next Apple Music IsoClipboard action in {self.get_isoclipboard_delay(is_youtube=False) // 60}m")
-        logger.info(f"Next YouTube Music action in {self.get_music_control_delay(is_youtube=True) // 60}m")
-        logger.info(f"Next Apple Music action in {self.get_music_control_delay(is_youtube=False) // 60}m")
+        # Log initial delays
+        # (These calls themselves generate logs about next intervals)
+        self.get_isoclipboard_delay(is_youtube=True)
+        self.get_isoclipboard_delay(is_youtube=False)
+        self.get_music_control_delay(is_youtube=True)
+        self.get_music_control_delay(is_youtube=False)
 
         # Start automation
         self.running = True
