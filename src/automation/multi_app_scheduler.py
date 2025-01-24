@@ -215,7 +215,6 @@ class MultiMusicAutomation(MutexMixin):
                 if apple_iso_elapsed >= iso_delay:
                     logger.info("Performing Apple Music IsoClipboard")
 
-                    # Prepare device for IsoClipboard action
                     if not self._run_device_locked(self.apple_controller.prepare_for_action):
                         logger.error("Failed to prepare for IsoClipboard action")
                         time.sleep(30)
@@ -228,7 +227,6 @@ class MultiMusicAutomation(MutexMixin):
                     else:
                         logger.error("Apple Music IsoClipboard failed")
 
-                    # Minimize after IsoClipboard
                     self._run_device_locked(self.apple_controller.manage_window_state, minimize=True)
 
                 # Perform Apple Music action
@@ -236,20 +234,19 @@ class MultiMusicAutomation(MutexMixin):
                 delay = self.get_music_control_delay(is_youtube=False)
                 time.sleep(delay)
 
-                # Prepare device for music action
                 if not self._run_device_locked(self.apple_controller.prepare_for_action):
                     logger.error(f"Failed to prepare for {action_name}")
                     time.sleep(30)
                     continue
 
                 logger.info(f"Performing Apple Music action: {action_name}")
-                if self._run_device_locked(action):
+                result = self._run_device_locked(action)
+                if result:
                     self.last_apple_action = time.time()
                     logger.info(f"Apple Music {action_name} successful")
                 else:
                     logger.error(f"Apple Music {action_name} failed")
 
-                # Minimize after action
                 self._run_device_locked(self.apple_controller.manage_window_state, minimize=True)
 
             except Exception as e:

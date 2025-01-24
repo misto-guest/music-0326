@@ -9,7 +9,7 @@ from src.utils.logging_utils import setup_logger
 logger = setup_logger(__name__)
 
 
-def _handle_alert_if_present(self) -> bool:
+def handle_unresponsive_alert(self) -> bool:
     """Handle 'Apple Music isn't responding' alert if present."""
     try:
         alert_title = self.device.xpath('//*[@resource-id="android:id/alertTitle"]')
@@ -214,22 +214,19 @@ class AppleMusicController(BaseController):
     def prepare_for_action(self) -> bool:
         """Prepare device for performing an action."""
         try:
-            # First ensure screen is active
             if not self.ensure_screen_active():
                 logger.error("Failed to ensure screen active before action")
                 return False
 
-            # Bring app to foreground
+            self.handle_unresponsive_alert()
             self.manage_window_state(minimize=False)
-            time.sleep(1)  # Wait for app to come to foreground
+            time.sleep(1)
 
-            # Verify app is in foreground
             if not self.is_running():
                 logger.error("App not in foreground after preparation")
                 return False
 
             return True
-
         except Exception as e:
             logger.error(f"Error preparing for action: {e}")
             return False
