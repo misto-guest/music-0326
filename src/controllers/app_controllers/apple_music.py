@@ -90,6 +90,23 @@ class AppleMusicController(BaseController):
         if not self.setup_screen_settings():
             logger.warning("Failed to set up screen settings during initialization")
 
+    def _handle_unresponsive_alert(self) -> bool:
+        """Handle unresponsive app alert."""
+        try:
+            alert_title = self.device.xpath('//*[@resource-id="android:id/alertTitle"]')
+            if alert_title.exists:
+                close_button = self.device.xpath('//*[@resource-id="android:id/aerr_close"]')
+                if close_button.exists:
+                    close_button.click()
+                    time.sleep(1)
+                    return True
+            return False
+        except Exception as e:
+            logger.error(f"Error handling alert: {e}")
+            return False
+
+
+
     def check_internet_connection(self, max_retries: int = 5, delay: int = 2) -> bool:
         """Check internet connection using netstat to verify active TCP connections."""
         for attempt in range(max_retries):
@@ -218,7 +235,10 @@ class AppleMusicController(BaseController):
                 logger.error("Failed to ensure screen active before action")
                 return False
 
-            self.handle_unresponsive_alert()
+            # Check for unresponsive alert
+            self._handle_unresponsive_alert()
+
+            # Bring app to foreground
             self.manage_window_state(minimize=False)
             time.sleep(1)
 
