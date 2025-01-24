@@ -9,7 +9,7 @@ from src.utils.logging_utils import setup_logger
 logger = setup_logger(__name__)
 
 
-def handle_unresponsive_alert(self) -> bool:
+def _handle_alert_if_present(self) -> bool:
     """Handle 'Apple Music isn't responding' alert if present."""
     try:
         alert_title = self.device.xpath('//*[@resource-id="android:id/alertTitle"]')
@@ -21,7 +21,7 @@ def handle_unresponsive_alert(self) -> bool:
                 return True
         return False
     except Exception as e:
-        logger.error(f"Error handling unresponsive alert: {e}")
+        logger.error(f"Error handling alert: {e}")
         return False
 
 def with_error_recovery(func: Callable) -> Callable:
@@ -275,15 +275,12 @@ class AppleMusicController(BaseController):
     def play_pause(self) -> bool:
         """Toggle play/pause state with error recovery."""
         try:
+            self._handle_alert_if_present()
             play_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/play_pause"]')
             if not play_button.exists:
-                logger.error("Play/pause button not found")
                 return False
-
             play_button.click()
-            logger.info("Clicked play/pause button")
             return True
-
         except Exception as e:
             logger.error(f"Error toggling play/pause: {e}")
             return False
@@ -292,15 +289,12 @@ class AppleMusicController(BaseController):
     def next_track(self) -> bool:
         """Skip to next track with error recovery."""
         try:
+            self._handle_alert_if_present()
             next_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/next_fast_forward"]')
             if not next_button.exists:
-                logger.error("Next track button not found")
                 return False
-
             next_button.click()
-            logger.info("Clicked next track button")
             return True
-
         except Exception as e:
             logger.error(f"Error skipping to next track: {e}")
             return False
@@ -309,15 +303,12 @@ class AppleMusicController(BaseController):
     def previous_track(self) -> bool:
         """Go to previous track with error recovery."""
         try:
+            self._handle_alert_if_present()
             prev_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/previous_rewind"]')
             if not prev_button.exists:
-                logger.error("Previous track button not found")
                 return False
-
             prev_button.click()
-            logger.info("Clicked previous track button")
             return True
-
         except Exception as e:
             logger.error(f"Error going to previous track: {e}")
             return False
@@ -326,15 +317,12 @@ class AppleMusicController(BaseController):
     def like_current_song(self) -> bool:
         """Like the currently playing song with error recovery."""
         try:
+            self._handle_alert_if_present()
             like_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/list_favorite_icon"]')
             if not like_button.exists:
-                logger.error("Like button not found")
                 return False
-
             like_button.click()
-            logger.info("Clicked like button")
             return True
-
         except Exception as e:
             logger.error(f"Error liking current song: {e}")
             return False
