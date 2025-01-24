@@ -291,9 +291,8 @@ class AppleMusicController(BaseController):
 
     @with_error_recovery
     def play_pause(self) -> bool:
-        """Toggle play/pause state with error recovery."""
         try:
-            self._handle_alert_if_present()
+            self._handle_unresponsive_alert()
             play_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/play_pause"]')
             if not play_button.exists:
                 return False
@@ -307,7 +306,7 @@ class AppleMusicController(BaseController):
     def next_track(self) -> bool:
         """Skip to next track with error recovery."""
         try:
-            self._handle_alert_if_present()
+            self._handle_unresponsive_alert()
             next_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/next_fast_forward"]')
             if not next_button.exists:
                 return False
@@ -321,7 +320,7 @@ class AppleMusicController(BaseController):
     def previous_track(self) -> bool:
         """Go to previous track with error recovery."""
         try:
-            self._handle_alert_if_present()
+            self._handle_unresponsive_alert()
             prev_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/previous_rewind"]')
             if not prev_button.exists:
                 return False
@@ -335,7 +334,7 @@ class AppleMusicController(BaseController):
     def like_current_song(self) -> bool:
         """Like the currently playing song with error recovery."""
         try:
-            self._handle_alert_if_present()
+            self._handle_unresponsive_alert()
             like_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/list_favorite_icon"]')
             if not like_button.exists:
                 return False
