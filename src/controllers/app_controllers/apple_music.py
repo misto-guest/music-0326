@@ -24,6 +24,7 @@ def handle_unresponsive_alert(self) -> bool:
         logger.error(f"Error handling alert: {e}")
         return False
 
+
 def with_error_recovery(func: Callable) -> Callable:
     """Decorator to add error recovery for Apple Music actions."""
 
@@ -34,7 +35,7 @@ def with_error_recovery(func: Callable) -> Callable:
 
         while retry_count <= max_retries:
             # Check for and handle unresponsive alert before action
-            self.handle_unresponsive_alert()
+            self._handle_unresponsive_alert()
 
             result = func(self, *args, **kwargs)
             if result:
@@ -44,7 +45,7 @@ def with_error_recovery(func: Callable) -> Callable:
 
             try:
                 # Check for unresponsive alert after failed action
-                if self.handle_unresponsive_alert():
+                if self._handle_unresponsive_alert():
                     logger.info("Handled unresponsive alert during recovery")
                     retry_count += 1
                     continue
