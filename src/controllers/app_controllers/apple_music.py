@@ -9,6 +9,21 @@ from src.utils.logging_utils import setup_logger
 logger = setup_logger(__name__)
 
 
+def handle_unresponsive_alert(self) -> bool:
+    """Handle 'Apple Music isn't responding' alert if present."""
+    try:
+        alert_title = self.device.xpath('//*[@resource-id="android:id/alertTitle"]')
+        if alert_title.exists:
+            close_button = self.device.xpath('//*[@resource-id="android:id/aerr_close"]')
+            if close_button.exists:
+                close_button.click()
+                time.sleep(1)
+                return True
+        return False
+    except Exception as e:
+        logger.error(f"Error handling unresponsive alert: {e}")
+        return False
+
 def with_error_recovery(func: Callable) -> Callable:
     """Decorator to add error recovery for Apple Music actions."""
 
@@ -18,6 +33,9 @@ def with_error_recovery(func: Callable) -> Callable:
         retry_count = 0
 
         while retry_count <= max_retries:
+            # Check for and handle unresponsive alert before action
+            self.handle_unresponsive_alert()
+
             result = func(self, *args, **kwargs)
             if result:
                 return True
@@ -25,6 +43,12 @@ def with_error_recovery(func: Callable) -> Callable:
             logger.warning(f"Apple Music action {func.__name__} failed, attempt {retry_count + 1}")
 
             try:
+                # Check for unresponsive alert after failed action
+                if self.handle_unresponsive_alert():
+                    logger.info("Handled unresponsive alert during recovery")
+                    retry_count += 1
+                    continue
+
                 logger.info("Executing recovery step 1: KEYCODE_BACK")
                 self.device.press("back")
                 time.sleep(1)
