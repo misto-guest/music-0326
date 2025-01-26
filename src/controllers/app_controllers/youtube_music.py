@@ -158,7 +158,6 @@ class YouTubeMusicController(BaseController):
             if not fetch_button.exists:
                 logger.error("FETCH button not found")
                 return False
-
             fetch_button.click()
             logger.info("Clicked FETCH")
 
@@ -166,25 +165,36 @@ class YouTubeMusicController(BaseController):
             if not self.check_internet_connection():
                 logger.error("No internet connection available")
                 return False
-
             time.sleep(3)
 
-            # Click the three dots menu using the new XPath
-            try:
-                three_dots_xpath = ('//*[@resource-id="com.google.android.apps.youtube.music:id/elements_container"]'
-                                    '/android.view.ViewGroup[1]/android.view.ViewGroup[6]/android.widget.ImageView[2]')
-                three_dots_element = self.device.xpath(three_dots_xpath)
-                if three_dots_element.exists:
-                    three_dots_element.click()
-                    logger.info("Clicked three dots menu using new XPath")
-                else:
-                    logger.warning("Three dots menu not found, falling back to default click method")
-                    self.device.xpath('//*[@resource-id="com.google.android.apps.youtube.music:id/elements_container"]'
-                                      '/android.view.ViewGroup[1]/android.view.ViewGroup[6]/android.widget.ImageView[1]').click()
-                    logger.info("Clicked using fallback XPath")
-            except Exception as e:
-                logger.error(f"Error clicking three dots menu: {e}")
-                self.device.click(835, 1135)  # Fallback coordinates
+            # Try multiple XPaths for three dots menu
+            three_dots_xpaths = [
+                ('//*[@resource-id="com.google.android.apps.youtube.music:id/elements_container"]'
+                 '/android.view.ViewGroup[1]/android.view.ViewGroup[6]/android.widget.ImageView[2]'),
+                ('//*[@resource-id="com.google.android.apps.youtube.music:id/elements_container"]'
+                 '/android.view.ViewGroup[1]/android.view.ViewGroup[6]/android.widget.ImageView[1]'),
+                ('//*[@resource-id="com.google.android.apps.youtube.music:id/elements_container"]'
+                 '/android.view.ViewGroup[1]/android.view.ViewGroup[5]/android.widget.ImageView[2]'),
+                ('//*[@resource-id="com.google.android.apps.youtube.music:id/elements_container"]'
+                 '/android.view.ViewGroup[1]/android.view.ViewGroup[5]/android.widget.ImageView[1]')
+            ]
+
+            dots_clicked = False
+            for xpath in three_dots_xpaths:
+                try:
+                    element = self.device.xpath(xpath)
+                    if element.exists:
+                        element.click()
+                        logger.info(f"Clicked three dots menu using XPath: {xpath}")
+                        dots_clicked = True
+                        break
+                except Exception as e:
+                    logger.debug(f"Failed to click using XPath {xpath}: {e}")
+                    continue
+
+            if not dots_clicked:
+                logger.warning("All XPath attempts failed, using fallback coordinates")
+                self.device.click(835, 1135)
                 logger.info("Clicked using fallback coordinates")
 
             time.sleep(3)
@@ -195,18 +205,15 @@ class YouTubeMusicController(BaseController):
                 shuffle_button.click()
                 logger.info("Clicked Shuffle play")
                 time.sleep(5)
-                # Press home to minimize after shuffle
                 self.device.press("home")
                 return True
 
-            # Attempt to click shuffle via XPath as a fallback
             shuffle_xpath = '//*[@resource-id="com.google.android.apps.youtube.music:id/bottom_sheet_list"]/android.widget.FrameLayout[1]'
             shuffle_element = self.device.xpath(shuffle_xpath)
             if shuffle_element.exists:
                 shuffle_element.click()
                 logger.info("Clicked shuffle button via XPath")
                 time.sleep(5)
-                # Press home to minimize after shuffle
                 self.device.press("home")
                 return True
 
