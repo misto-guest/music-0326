@@ -20,25 +20,48 @@ class YouTubeMusicController(BaseController):
         self.app_name = YouTubeMusicConfig.APP_NAME
         self.isoclipboard_package = IsoClipboardConfig.PACKAGE_NAME
 
-    def ensure_screen_active(self) -> bool:
-        """Ensure the Android device screen is active."""
+    def get_rotation_settings(self) -> dict:
+        """Get current rotation settings."""
         try:
-            # Check if screen is on
+            auto_rotate = self.device.shell('settings get system accelerometer_rotation').output.strip()
+            user_rotation = self.device.shell('settings get system user_rotation').output.strip()
+            return {
+                'auto_rotate': auto_rotate,
+                'user_rotation': user_rotation
+            }
+        except Exception as e:
+            logger.error(f"Error getting rotation settings: {e}")
+            return {}
+
+
+    def ensure_screen_active(self) -> bool:
+        """Ensure the Android device screen is active while monitoring rotation settings."""
+        try:
+            # Check initial rotation settings
+            initial_settings = self.get_rotation_settings()
+            logger.info(f"Initial rotation settings before screen activation: {initial_settings}")
+
+            # Original screen activation code
             screen_state = self.device.info.get('screenOn')
-
             if not screen_state:
-                # Press power button to wake the screen
                 self.device.press("power")
-                time.sleep(2)  # Wait for screen to wake up
-
-                # Verify screen is now on
+                time.sleep(2)
                 if not self.device.info.get('screenOn'):
                     logger.error("Failed to activate screen")
                     return False
 
+            # Check if rotation settings changed
+            current_settings = self.get_rotation_settings()
+            if current_settings != initial_settings:
+                logger.warning(f"Rotation settings changed during screen activation!")
+                logger.warning(f"Before: {initial_settings}")
+                logger.warning(f"After: {current_settings}")
+                # Restore original settings
+                self.device.shell(f'settings put system accelerometer_rotation {initial_settings["auto_rotate"]}')
+                self.device.shell(f'settings put system user_rotation {initial_settings["user_rotation"]}')
+
             logger.info("Screen is active")
             return True
-
         except Exception as e:
             logger.error(f"Error ensuring screen is active: {e}")
             return False
@@ -148,10 +171,19 @@ class YouTubeMusicController(BaseController):
         return False
 
     def handle_isoclipboard(self) -> bool:
+        """Handle IsoClipboard while maintaining rotation settings."""
         try:
+            # Force disable auto-rotate before starting
+            self.device.shell('settings put system accelerometer_rotation 0')
+            time.sleep(1)  # Wait for setting to apply
+
             # Start the IsoClipboard app
             self.device.app_start(self.isoclipboard_package)
             time.sleep(2)
+
+            # Force disable auto-rotate again after app starts
+            self.device.shell('settings put system accelerometer_rotation 0')
+            time.sleep(1)
 
             # Click the FETCH button
             fetch_button = self.device(resourceId=f"{self.isoclipboard_package}:id/buttonFetchUrl4")
@@ -179,6 +211,10 @@ class YouTubeMusicController(BaseController):
                  '/android.view.ViewGroup[1]/android.view.ViewGroup[5]/android.widget.ImageView[1]')
             ]
 
+            # Force disable auto-rotate before menu interaction
+            self.device.shell('settings put system accelerometer_rotation 0')
+            time.sleep(1)
+
             dots_clicked = False
             for xpath in three_dots_xpaths:
                 try:
@@ -198,6 +234,10 @@ class YouTubeMusicController(BaseController):
                 logger.info("Clicked using fallback coordinates")
 
             time.sleep(3)
+
+            # Force disable auto-rotate before shuffle
+            self.device.shell('settings put system accelerometer_rotation 0')
+            time.sleep(1)
 
             # Attempt to click the Shuffle play button
             shuffle_button = self.device(text="Shuffle play", packageName=self.package_name)
@@ -223,6 +263,12 @@ class YouTubeMusicController(BaseController):
         except Exception as e:
             logger.error(f"Error with IsoClipboard: {e}")
             return False
+        finally:
+            # Always ensure auto-rotate is disabled at the end
+            try:
+                self.device.shell('settings put system accelerometer_rotation 0')
+            except Exception as e:
+                logger.error(f"Error disabling auto-rotate in finally block: {e}")
 
     def play_pause(self) -> bool:
         """Toggle play/pause state."""
