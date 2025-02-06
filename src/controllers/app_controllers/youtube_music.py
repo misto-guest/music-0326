@@ -289,18 +289,37 @@ class YouTubeMusicController(BaseController):
             return False
 
     def next_track(self) -> bool:
-        """Skip to next track."""
+        """Skip to next track with improved reliability."""
         try:
-            next_button = self.device(
-                resourceId="com.google.android.apps.youtube.music:id/player_control_next_button"
-            )
-            if not next_button.exists:
-                logger.error("Next track button not found")
+            logger.info("Attempting to click next track button...")
+
+            # First ensure we're properly prepared
+            if not self.prepare_for_action():
+                logger.error("Failed to prepare for next track action")
                 return False
 
-            next_button.click()
-            logger.info("Clicked next track button")
-            return True
+            # Try to find the next button with multiple attempts
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                next_button = self.device(
+                    resourceId="com.google.android.apps.youtube.music:id/player_control_next_button"
+                )
+
+                if next_button.exists:
+                    next_button.click()
+                    logger.info("Clicked next track button")
+                    time.sleep(2)
+                    return True
+
+                logger.warning(f"Next button not found, attempt {attempt + 1}/{max_attempts}")
+                time.sleep(2)
+
+                # Try to bring app to foreground again
+                self.device.app_start(self.package_name)
+                time.sleep(2)
+
+            logger.error("Next track button not found after all attempts")
+            return False
 
         except Exception as e:
             logger.error(f"Error skipping to next track: {e}")
@@ -427,9 +446,13 @@ class YouTubeMusicController(BaseController):
             return False
 
     def prepare_for_action(self) -> bool:
-        """Prepare YouTube Music for an action."""
+        """Prepare YouTube Music for an action with proper loading time."""
         try:
             logger.info("Preparing YouTube Music for action...")
+
+            # Force disable auto-rotate
+            self.device.shell('settings put system accelerometer_rotation 0')
+            time.sleep(1)
 
             # Check if app is running and start if needed
             if not self.is_running():
@@ -437,18 +460,25 @@ class YouTubeMusicController(BaseController):
                 if not self.start_app():
                     logger.error("Failed to start YouTube Music")
                     return False
-                time.sleep(2)  # Wait for app to start
+                # Increased wait time for app to fully load
+                time.sleep(5)  # Give more time for app to initialize
 
             # Ensure app is in foreground
-            if not self.bring_to_foreground():
-                logger.error("Failed to bring YouTube Music to foreground")
-                return False
+            self.device.app_start(self.package_name)
+            time.sleep(3)  # Wait for app to come to foreground
 
-            # Wait for UI to be ready
-            time.sleep(1)
+            # Wait for main UI elements
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                if self.device(
+                        resourceId="com.google.android.apps.youtube.music:id/player_control_play_pause_replay_button").exists:
+                    logger.info("YouTube Music UI is ready")
+                    return True
+                logger.warning(f"UI not ready, attempt {attempt + 1}/{max_attempts}")
+                time.sleep(2)
 
-            logger.info("YouTube Music ready for action")
-            return True
+            logger.error("UI elements not found after waiting")
+            return False
 
         except Exception as e:
             logger.error(f"Error preparing YouTube Music: {e}")
