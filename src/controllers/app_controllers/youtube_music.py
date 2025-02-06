@@ -326,91 +326,96 @@ class YouTubeMusicController(BaseController):
             return False
 
     def previous_track(self) -> bool:
-        """Go to previous track."""
+        """Go to previous track with proper app preparation."""
         try:
-            prev_button = self.device(
-                resourceId="com.google.android.apps.youtube.music:id/player_control_previous_button"
-            )
-            if not prev_button.exists:
-                logger.error("Previous track button not found")
+            logger.info("Attempting to click previous track button...")
+
+            # First ensure we're properly prepared
+            if not self.prepare_for_action():
+                logger.error("Failed to prepare for previous track action")
                 return False
 
-            prev_button.click()
-            logger.info("Clicked previous track button")
-            return True
+            # Try to find the previous button with multiple attempts
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                prev_button = self.device(
+                    resourceId="com.google.android.apps.youtube.music:id/player_control_previous_button"
+                )
+                if prev_button.exists:
+                    prev_button.click()
+                    logger.info("Clicked previous track button")
+                    time.sleep(2)
+                    return True
+
+                logger.warning(f"Previous button not found, attempt {attempt + 1}/{max_attempts}")
+                time.sleep(2)
+
+                # Try to bring app to foreground again
+                self.device.app_start(self.package_name)
+                time.sleep(2)
+
+            logger.error("Previous track button not found after all attempts")
+            return False
 
         except Exception as e:
             logger.error(f"Error going to previous track: {e}")
             return False
 
     def like_current_song(self) -> bool:
-        xpath = (
-            '//*[contains(@content-desc, "like this video along with") '
-            'and contains(@content-desc, "other people")]/android.view.ViewGroup[1]'
-        )
-
-        original_wait_timeout = self.device.wait_timeout
-        original_implicit_wait = 0.0
-
+        """Like current song with proper app preparation and state verification."""
         try:
-            short_timeout = 0.5
-            self.device.wait_timeout = short_timeout
-            self.device.implicitly_wait(short_timeout)
+            logger.info("Starting like song action...")
+
+            # First ensure we're properly prepared
+            if not self.prepare_for_action():
+                logger.error("Failed to prepare for like action")
+                return False
+
+            # Verify app is actually running
+            is_running = self.is_running()
+            logger.info(f"Is YouTube Music running? {is_running}")
+            if not is_running:
+                logger.error("YouTube Music is not running after preparation")
+                return False
+
+            # Get current app info
+            current_app = self.device.app_current()
+            logger.info(f"Current app package: {current_app.get('package')}")
+            if current_app.get('package') != self.package_name:
+                logger.error("YouTube Music is not in foreground")
+                return False
+
+            # Try XPath first
+            logger.info("Attempting to find like button via XPath...")
+            xpath = ('//*[contains(@content-desc, "like this video along with") '
+                     'and contains(@content-desc, "other people")]/android.view.ViewGroup[1]')
 
             like_button = self.device.xpath(xpath)
             if like_button.exists:
-                try:
-                    like_button.click()
-                    logger.info("Liked current song via direct XPath click")
-                    return True
-                except Exception as e:
-                    logger.warning(f"Direct XPath click failed: {e}")
+                logger.info("Found like button via XPath")
+                like_button.click()
+                time.sleep(2)
+                return True
 
-            if like_button.exists:
-                try:
-                    element_info = like_button.info
-                    if element_info:
-                        bounds = element_info.get('bounds', {})
-                        center_x = (bounds.get('left', 0) + bounds.get('right', 0)) // 2
-                        center_y = (bounds.get('top', 0) + bounds.get('bottom', 0)) // 2
-
-                        if center_x and center_y:
-                            self.device.click(center_x, center_y)
-                            logger.info("Liked current song via bounding-box center tap")
-                            return True
-                except Exception as bbox_err:
-                    logger.warning(f"Bounding-box tap failed: {bbox_err}")
-
+            logger.info("XPath like button not found, trying fallback coordinates...")
+            # Get screen dimensions
             screen_w, screen_h = self.device.window_size()
-            fallback1_x = int(0.113 * screen_w)
-            fallback1_y = int(0.623 * screen_h)
+            logger.info(f"Screen dimensions: {screen_w}x{screen_h}")
 
-            try:
-                self.device.click(fallback1_x, fallback1_y)
-                logger.info(f"Liked current song via fallback coordinates #1: {fallback1_x}, {fallback1_y}")
-                return True
-            except Exception as e1:
-                logger.warning(f"First fallback coordinate tap failed: {e1}")
+            # Calculate and log coordinates before clicking
+            x = int(0.113 * screen_w)
+            y = int(0.623 * screen_h)
+            logger.info(f"Using fallback coordinates: x={x}, y={y}")
 
-            # Second fallback coordinates
-            fallback2_x = int(0.121 * screen_w)
-            fallback2_y = int(0.659 * screen_h)
+            self.device.click(x, y)
+            time.sleep(2)
+            logger.info("Clicked fallback coordinates")
 
-            try:
-                self.device.click(fallback2_x, fallback2_y)
-                logger.info(f"Liked current song via fallback coordinates #2: {fallback2_x}, {fallback2_y}")
-                return True
-            except Exception as e2:
-                logger.warning(f"Second fallback coordinate tap failed: {e2}")
-                return False
+            return True
 
-        except Exception as main_err:
-            logger.error(f"Error liking current song: {main_err}")
+        except Exception as e:
+            logger.error(f"Error liking song: {e}")
             return False
-
-        finally:
-            self.device.wait_timeout = original_wait_timeout
-            self.device.implicitly_wait(original_implicit_wait)
 
     def start_app(self) -> bool:
         """Start YouTube Music with disabled auto-rotation."""
@@ -454,39 +459,46 @@ class YouTubeMusicController(BaseController):
             return False
 
     def prepare_for_action(self) -> bool:
-        """Prepare YouTube Music for action with verified loading."""
+        """Prepare YouTube Music with verified foreground state."""
         try:
             logger.info("Preparing YouTube Music for action...")
 
-            # Disable auto-rotation
+            # First disable auto-rotation
             self.device.shell('settings put system accelerometer_rotation 0')
             time.sleep(1)
 
-            # Press home first to ensure clean start
+            # Clear app from recents and start fresh
+            self.device.press("home")
+            time.sleep(2)
+            self.device.press("recent")
+            time.sleep(2)
+            if self.device(text="Clear all").exists:
+                self.device(text="Clear all").click()
+            time.sleep(2)
             self.device.press("home")
             time.sleep(2)
 
-            # Start the app
-            logger.info("Starting YouTube Music...")
-            self.device.app_start(self.package_name)
-            time.sleep(7)  # Initial wait
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                logger.info(f"Opening YouTube Music (attempt {attempt + 1}/{max_attempts})")
 
-            # Verify app is actually running and in foreground
-            if not self.is_running():
-                logger.error("YouTube Music failed to start")
-                return False
+                # Start app
+                self.device.app_start(self.package_name)
+                time.sleep(5)  # Wait for initial launch
 
-            # Wait for control buttons to appear
-            logger.info("Waiting for UI elements...")
-            for attempt in range(3):
-                if self.device(
-                        resourceId="com.google.android.apps.youtube.music:id/player_control_play_pause_replay_button").exists:
-                    logger.info("YouTube Music is ready")
+                # Verify app is actually in foreground
+                current_app = self.device.app_current()
+                logger.info(f"Current app: {current_app}")
+
+                if current_app["package"] == self.package_name:
+                    logger.info("YouTube Music is in foreground")
+                    time.sleep(5)  # Additional wait for UI elements
                     return True
-                logger.warning(f"UI not ready, attempt {attempt + 1}/3")
+
+                logger.warning("App not in foreground, retrying...")
                 time.sleep(2)
 
-            logger.error("YouTube Music UI elements not found")
+            logger.error("Failed to bring YouTube Music to foreground")
             return False
 
         except Exception as e:
