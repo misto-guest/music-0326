@@ -459,22 +459,29 @@ class YouTubeMusicController(BaseController):
             return False
 
     def prepare_for_action(self) -> bool:
-        """Prepare YouTube Music from minimized state."""
+        """Prepare YouTube Music with forced orientation."""
         try:
             logger.info("Preparing YouTube Music for action...")
 
-            # First disable auto-rotation
-            self.device.shell('settings put system accelerometer_rotation 0')
-            time.sleep(1)
+            # Force portrait orientation (0 degrees)
+            logger.info("Setting forced portrait orientation...")
+            self.device.shell('settings put system accelerometer_rotation 0')  # Disable auto-rotate
+            self.device.shell('settings put system user_rotation 0')  # Force portrait (0 degrees)
+            self.device.shell('settings put system rotation_animation_disabled 1')  # Disable rotation animation
+            time.sleep(2)
 
-            # Don't clear recents, just ensure we're on home screen
+            # Go home first
             self.device.press("home")
             time.sleep(2)
 
-            # Start app without clearing it from recents
-            logger.info("Opening YouTube Music from minimized state")
+            # Start app
+            logger.info("Opening YouTube Music...")
             self.device.app_start(self.package_name)
-            time.sleep(5)  # Wait for app to come to foreground
+            time.sleep(5)
+
+            # Force orientation again after app starts
+            self.device.shell('settings put system user_rotation 0')
+            time.sleep(2)
 
             # Verify app is in foreground
             current_app = self.device.app_current()
@@ -482,7 +489,7 @@ class YouTubeMusicController(BaseController):
 
             if current_app["package"] == self.package_name:
                 logger.info("YouTube Music is in foreground")
-                time.sleep(3)  # Additional wait for UI
+                time.sleep(3)
                 return True
 
             logger.error("Failed to bring YouTube Music to foreground")
