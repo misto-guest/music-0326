@@ -459,7 +459,7 @@ class YouTubeMusicController(BaseController):
             return False
 
     def prepare_for_action(self) -> bool:
-        """Prepare YouTube Music with verified foreground state."""
+        """Prepare YouTube Music from minimized state."""
         try:
             logger.info("Preparing YouTube Music for action...")
 
@@ -467,36 +467,23 @@ class YouTubeMusicController(BaseController):
             self.device.shell('settings put system accelerometer_rotation 0')
             time.sleep(1)
 
-            # Clear app from recents and start fresh
-            self.device.press("home")
-            time.sleep(2)
-            self.device.press("recent")
-            time.sleep(2)
-            if self.device(text="Clear all").exists:
-                self.device(text="Clear all").click()
-            time.sleep(2)
+            # Don't clear recents, just ensure we're on home screen
             self.device.press("home")
             time.sleep(2)
 
-            max_attempts = 3
-            for attempt in range(max_attempts):
-                logger.info(f"Opening YouTube Music (attempt {attempt + 1}/{max_attempts})")
+            # Start app without clearing it from recents
+            logger.info("Opening YouTube Music from minimized state")
+            self.device.app_start(self.package_name)
+            time.sleep(5)  # Wait for app to come to foreground
 
-                # Start app
-                self.device.app_start(self.package_name)
-                time.sleep(5)  # Wait for initial launch
+            # Verify app is in foreground
+            current_app = self.device.app_current()
+            logger.info(f"Current app: {current_app}")
 
-                # Verify app is actually in foreground
-                current_app = self.device.app_current()
-                logger.info(f"Current app: {current_app}")
-
-                if current_app["package"] == self.package_name:
-                    logger.info("YouTube Music is in foreground")
-                    time.sleep(5)  # Additional wait for UI elements
-                    return True
-
-                logger.warning("App not in foreground, retrying...")
-                time.sleep(2)
+            if current_app["package"] == self.package_name:
+                logger.info("YouTube Music is in foreground")
+                time.sleep(3)  # Additional wait for UI
+                return True
 
             logger.error("Failed to bring YouTube Music to foreground")
             return False
