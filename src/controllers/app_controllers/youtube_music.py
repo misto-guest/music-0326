@@ -33,6 +33,60 @@ class YouTubeMusicController(BaseController):
             logger.error(f"Error getting rotation settings: {e}")
             return {}
 
+    def handle_rotation_state(self) -> bool:
+        """Handle rotation state, including force-stopping if app was launched with auto-rotate."""
+        try:
+            # Get initial rotation settings
+            settings = self.get_rotation_settings()
+            if not settings:
+                logger.error("Failed to get rotation settings")
+                return False
+
+            # If auto-rotate is enabled and app is running, force stop
+            if settings['auto_rotate'] == '1' and self.is_running():
+                logger.info("App was launched with auto-rotate enabled, forcing stop")
+                self.force_stop()
+                time.sleep(2)
+
+            # Disable auto-rotate and force portrait
+            self.device.shell('settings put system accelerometer_rotation 0')
+            time.sleep(1)
+            self.device.shell('settings put system user_rotation 0')
+            time.sleep(1)
+
+            # Verify settings were applied
+            new_settings = self.get_rotation_settings()
+            if not new_settings:
+                logger.error("Failed to verify new rotation settings")
+                return False
+
+            if new_settings['auto_rotate'] != '0' or new_settings['user_rotation'] != '0':
+                logger.error(f"Failed to apply rotation settings. Current state: {new_settings}")
+                return False
+
+            logger.info("Rotation settings successfully applied")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error handling rotation state: {e}")
+            return False
+
+    def verify_rotation_settings(self) -> bool:
+        """Verify current rotation settings are correct."""
+        try:
+            settings = self.get_rotation_settings()
+            if not settings:
+                return False
+
+            is_correct = (settings['auto_rotate'] == '0' and settings['user_rotation'] == '0')
+            if not is_correct:
+                logger.warning(f"Incorrect rotation settings detected: {settings}")
+
+            return is_correct
+
+        except Exception as e:
+            logger.error(f"Error verifying rotation settings: {e}")
+            return False
 
     def ensure_screen_active(self) -> bool:
         """Ensure the Android device screen is active while monitoring rotation settings."""
@@ -418,17 +472,28 @@ class YouTubeMusicController(BaseController):
             return False
 
     def start_app(self) -> bool:
-        """Start YouTube Music with disabled auto-rotation."""
+        """Start YouTube Music with proper rotation handling."""
         try:
-            # First disable auto-rotation
-            self.device.shell('settings put system accelerometer_rotation 0')
-            time.sleep(1)
+            # First handle rotation state
+            if not self.handle_rotation_state():
+                logger.error("Failed to handle rotation state")
+                return False
 
-            # Start app and wait for it to load
+            # Start the app
             self.device.app_start(self.package_name)
-            time.sleep(5)  # Give app time to load
+            time.sleep(3)
 
-            return self.is_running()
+            # Verify app is running
+            if not self.is_running():
+                logger.error("App failed to start")
+                return False
+
+            # Verify rotation settings maintained
+            if not self.verify_rotation_settings():
+                logger.warning("Rotation settings changed after app start, attempting to fix")
+                return self.handle_rotation_state()
+
+            return True
 
         except Exception as e:
             logger.error(f"Error starting YouTube Music: {e}")
@@ -482,39 +547,31 @@ class YouTubeMusicController(BaseController):
             return False
 
     def prepare_for_action(self) -> bool:
-        """Prepare YouTube Music without affecting rotation settings."""
+        """Prepare YouTube Music for action with proper rotation handling."""
         try:
             logger.info("Preparing YouTube Music for action...")
 
-            # 1. Check and set rotation
-            current_rotation = self.device.shell('settings get system accelerometer_rotation').output.strip()
-            logger.info(f"Current auto-rotate setting: {current_rotation}")
+            # Verify/fix rotation settings first
+            if not self.verify_rotation_settings():
+                if not self.handle_rotation_state():
+                    logger.error("Failed to handle rotation state")
+                    return False
 
-            if current_rotation != '0':
-                logger.info("Disabling auto-rotate...")
-                self.device.shell('settings put system accelerometer_rotation 0')
-                time.sleep(1)
-
-            # 2. Start app using am start instead of monkey
-            logger.info("Opening YouTube Music...")
+            # Start app using activity manager
             self.device.shell(
                 f'am start -W {self.package_name}/com.google.android.apps.youtube.music.activities.MusicActivity --activity-single-top')
             time.sleep(3)
 
-            # 3. Verify auto-rotate is still disabled
-            after_rotation = self.device.shell('settings get system accelerometer_rotation').output.strip()
-            if after_rotation != '0':
-                logger.warning("Auto-rotate got enabled, disabling again...")
-                self.device.shell('settings put system accelerometer_rotation 0')
-                time.sleep(1)
-
-            # 4. Verify app is in foreground
+            # Verify app is in foreground
             current_app = self.device.app_current()
-            logger.info(f"Current app package: {current_app.get('package')}")
-
             if current_app.get('package') != self.package_name:
                 logger.error("YouTube Music is not in foreground")
                 return False
+
+            # Final rotation verification
+            if not self.verify_rotation_settings():
+                logger.warning("Rotation settings changed, attempting to fix")
+                return self.handle_rotation_state()
 
             return True
 
