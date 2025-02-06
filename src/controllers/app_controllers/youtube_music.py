@@ -458,42 +458,65 @@ class YouTubeMusicController(BaseController):
             logger.error(f"Error force stopping YouTube Music: {e}")
             return False
 
+    def ensure_orientation(self) -> bool:
+        """Force the screen into portrait mode."""
+        try:
+            logger.info("Forcing portrait orientation...")
+            # Kill any rotation setting daemon
+            self.device.shell('pkill rotationcontrol')
+            time.sleep(1)
+
+            # Disable auto rotation and force portrait
+            cmds = [
+                'settings put system accelerometer_rotation 0',
+                'settings put system user_rotation 0',
+            ]
+
+            for cmd in cmds:
+                self.device.shell(cmd)
+                time.sleep(0.5)
+
+            return True
+        except Exception as e:
+            logger.error(f"Error forcing orientation: {e}")
+            return False
+
     def prepare_for_action(self) -> bool:
-        """Prepare YouTube Music with forced orientation."""
+        """Prepare YouTube Music without affecting rotation settings."""
         try:
             logger.info("Preparing YouTube Music for action...")
 
-            # Force portrait orientation (0 degrees)
-            logger.info("Setting forced portrait orientation...")
-            self.device.shell('settings put system accelerometer_rotation 0')  # Disable auto-rotate
-            self.device.shell('settings put system user_rotation 0')  # Force portrait (0 degrees)
-            self.device.shell('settings put system rotation_animation_disabled 1')  # Disable rotation animation
-            time.sleep(2)
+            # 1. Check and set rotation
+            current_rotation = self.device.shell('settings get system accelerometer_rotation').output.strip()
+            logger.info(f"Current auto-rotate setting: {current_rotation}")
 
-            # Go home first
-            self.device.press("home")
-            time.sleep(2)
+            if current_rotation != '0':
+                logger.info("Disabling auto-rotate...")
+                self.device.shell('settings put system accelerometer_rotation 0')
+                time.sleep(1)
 
-            # Start app
+            # 2. Start app using am start instead of monkey
             logger.info("Opening YouTube Music...")
-            self.device.app_start(self.package_name)
-            time.sleep(5)
+            self.device.shell(
+                f'am start -W {self.package_name}/com.google.android.apps.youtube.music.activities.MusicActivity --activity-single-top')
+            time.sleep(3)
 
-            # Force orientation again after app starts
-            self.device.shell('settings put system user_rotation 0')
-            time.sleep(2)
+            # 3. Verify auto-rotate is still disabled
+            after_rotation = self.device.shell('settings get system accelerometer_rotation').output.strip()
+            if after_rotation != '0':
+                logger.warning("Auto-rotate got enabled, disabling again...")
+                self.device.shell('settings put system accelerometer_rotation 0')
+                time.sleep(1)
 
-            # Verify app is in foreground
+            # 4. Verify app is in foreground
             current_app = self.device.app_current()
-            logger.info(f"Current app: {current_app}")
+            logger.info(f"Current app package: {current_app.get('package')}")
 
-            if current_app["package"] == self.package_name:
-                logger.info("YouTube Music is in foreground")
-                time.sleep(3)
-                return True
+            if current_app.get('package') != self.package_name:
+                logger.error("YouTube Music is not in foreground")
+                return False
 
-            logger.error("Failed to bring YouTube Music to foreground")
-            return False
+            return True
 
         except Exception as e:
             logger.error(f"Error preparing YouTube Music: {e}")
