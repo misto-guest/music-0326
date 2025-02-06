@@ -413,10 +413,74 @@ class YouTubeMusicController(BaseController):
             self.device.implicitly_wait(original_implicit_wait)
 
     def start_app(self) -> bool:
+        """Start YouTube Music app with proper orientation control."""
         try:
+            logger.info("Starting YouTube Music with orientation control...")
+
+            # Set initial orientation before app start
+            logger.info("Setting initial orientation...")
+            self.device.shell('settings put system accelerometer_rotation 0')  # Disable auto-rotate
+            self.device.shell('settings put system user_rotation 0')  # Force portrait
+            time.sleep(1)
+
+            # Clear app from recent apps first
+            logger.info("Clearing app from recents...")
+            self.device.app_stop(self.package_name)
+            self.device.press("home")
+            time.sleep(1)
+            self.device.press("recent")
+            time.sleep(2)
+            if self.device(text="Clear all").exists:
+                self.device(text="Clear all").click()
+            time.sleep(1)
+            self.device.press("home")
+            time.sleep(1)
+
+            # Start the app with orientation lock
+            logger.info("Starting app...")
             self.device.app_start(self.package_name)
-            time.sleep(3)
-            return self.is_running()
+            time.sleep(3)  # Initial wait
+
+            # Double check orientation after app start
+            logger.info("Verifying orientation...")
+            self.device.shell('settings put system accelerometer_rotation 0')
+            self.device.shell('settings put system user_rotation 0')
+            time.sleep(2)
+
+            # Additional app loading wait
+            logger.info("Waiting for app to fully load...")
+            time.sleep(5)
+
+            # Verify app is running
+            if not self.is_running():
+                logger.error("YouTube Music failed to start")
+                return False
+
+            # Wait for main UI elements with orientation checks
+            max_attempts = 5  # Increased attempts
+            for attempt in range(max_attempts):
+                # Recheck orientation each attempt
+                self.device.shell('settings put system accelerometer_rotation 0')
+                self.device.shell('settings put system user_rotation 0')
+
+                if self.device(
+                        resourceId="com.google.android.apps.youtube.music:id/player_control_play_pause_replay_button").exists:
+                    logger.info("YouTube Music UI is ready")
+                    # Final orientation check
+                    self.device.shell('settings put system accelerometer_rotation 0')
+                    self.device.shell('settings put system user_rotation 0')
+                    return True
+
+                logger.warning(f"Waiting for UI elements, attempt {attempt + 1}/{max_attempts}")
+                time.sleep(3)  # Longer wait between attempts
+
+                # If UI not found, try to refocus app
+                self.device.app_start(self.package_name)
+                time.sleep(2)
+
+            logger.error("UI elements not found after app start")
+            return False
+
         except Exception as e:
             logger.error(f"Error starting YouTube Music: {e}")
             return False
@@ -446,35 +510,47 @@ class YouTubeMusicController(BaseController):
             return False
 
     def prepare_for_action(self) -> bool:
-        """Prepare YouTube Music for an action with proper loading time."""
+        """Prepare YouTube Music for an action with strict orientation control."""
         try:
             logger.info("Preparing YouTube Music for action...")
 
-            # Force disable auto-rotate
+            # Force portrait orientation
+            logger.info("Setting orientation...")
             self.device.shell('settings put system accelerometer_rotation 0')
+            self.device.shell('settings put system user_rotation 0')
             time.sleep(1)
 
             # Check if app is running and start if needed
             if not self.is_running():
                 logger.info("YouTube Music not running, starting app...")
-                if not self.start_app():
+                if not self.start_app():  # This includes orientation control
                     logger.error("Failed to start YouTube Music")
                     return False
-                # Increased wait time for app to fully load
-                time.sleep(5)  # Give more time for app to initialize
+            else:
+                # If already running, ensure proper orientation and focus
+                self.device.app_start(self.package_name)
+                time.sleep(2)
+                self.device.shell('settings put system accelerometer_rotation 0')
+                self.device.shell('settings put system user_rotation 0')
+                time.sleep(1)
 
-            # Ensure app is in foreground
-            self.device.app_start(self.package_name)
-            time.sleep(3)  # Wait for app to come to foreground
-
-            # Wait for main UI elements
-            max_attempts = 3
+            # Wait for UI with orientation checks
+            max_attempts = 4
             for attempt in range(max_attempts):
+                # Recheck orientation each attempt
+                self.device.shell('settings put system accelerometer_rotation 0')
+                self.device.shell('settings put system user_rotation 0')
+
                 if self.device(
                         resourceId="com.google.android.apps.youtube.music:id/player_control_play_pause_replay_button").exists:
                     logger.info("YouTube Music UI is ready")
                     return True
+
                 logger.warning(f"UI not ready, attempt {attempt + 1}/{max_attempts}")
+                time.sleep(3)
+
+                # Refocus app
+                self.device.app_start(self.package_name)
                 time.sleep(2)
 
             logger.error("UI elements not found after waiting")
