@@ -547,15 +547,18 @@ class YouTubeMusicController(BaseController):
             return False
 
     def prepare_for_action(self) -> bool:
-        """Prepare YouTube Music for action with proper rotation handling."""
         try:
             logger.info("Preparing YouTube Music for action...")
 
-            # Verify/fix rotation settings first
             if not self.verify_rotation_settings():
                 if not self.handle_rotation_state():
                     logger.error("Failed to handle rotation state")
                     return False
+
+            # Force stop if app was previously running
+            if self.is_running():
+                self.force_stop()
+                time.sleep(2)
 
             # Start app using activity manager
             self.device.shell(
@@ -568,11 +571,24 @@ class YouTubeMusicController(BaseController):
                 logger.error("YouTube Music is not in foreground")
                 return False
 
+            # Check if music is playing
+            play_button = self.device(
+                resourceId="com.google.android.apps.youtube.music:id/player_control_play_pause_replay_button"
+            )
+
+            if not play_button.exists:
+                logger.info("No playback detected, starting music...")
+                if not self.handle_isoclipboard():
+                    logger.error("Failed to start playback")
+                    return False
+                time.sleep(5)
+
             # Final rotation verification
             if not self.verify_rotation_settings():
                 logger.warning("Rotation settings changed, attempting to fix")
                 return self.handle_rotation_state()
 
+            time.sleep(2)
             return True
 
         except Exception as e:
