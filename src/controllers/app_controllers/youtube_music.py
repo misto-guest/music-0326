@@ -193,15 +193,24 @@ class YouTubeMusicController(BaseController):
             if not self._verify_rotation_disabled():
                 return False
 
-            # Find and click FETCH button
-            fetch_button = self.device(resourceId=f"{self.isoclipboard_package}:id/buttonFetchUrl4")
-            if not fetch_button.exists:
-                logger.error("FETCH button not found")
-                return False
+            # Try the exact XPath first
+            fetch_xpath = '//*[@resource-id="com.example.isolatedclipboard:id/buttonFetchUrl4"]'
+            fetch_button = self.device.xpath(fetch_xpath)
 
-            fetch_button.click()
-            logger.info("Clicked FETCH")
-            time.sleep(5)
+            if fetch_button.exists:
+                fetch_button.click()
+                logger.info("Clicked FETCH YTM button using XPath")
+                time.sleep(5)
+            else:
+                # Fallback to resourceId if XPath fails
+                fetch_button = self.device(resourceId="com.example.isolatedclipboard:id/buttonFetchUrl4")
+                if not fetch_button.exists:
+                    logger.error("FETCH YTM button not found")
+                    return False
+
+                fetch_button.click()
+                logger.info("Clicked FETCH YTM button using resourceId")
+                time.sleep(5)
 
             # Verify internet connection
             if not self.check_internet_connection():
