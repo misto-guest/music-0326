@@ -318,20 +318,163 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error liking current song: {e}")
             return False
 
+    def get_rotation_settings(self) -> Dict[str, str]:
+        """Get current rotation settings."""
+        try:
+            auto_rotate = self.device.shell('settings get system accelerometer_rotation').output.strip()
+            user_rotation = self.device.shell('settings get system user_rotation').output.strip()
+            return {
+                'auto_rotate': auto_rotate,
+                'user_rotation': user_rotation
+            }
+        except Exception as e:
+            logger.error(f"Error getting rotation settings: {e}")
+            return {}
+
+    def _force_disable_rotation(self) -> bool:
+        """Force disable rotation with verification."""
+        try:
+            for _ in range(3):
+                self.device.shell('settings put system accelerometer_rotation 0')
+                time.sleep(0.5)
+                current = self.device.shell('settings get system accelerometer_rotation').output.strip()
+                if current == '0':
+                    logger.info("Successfully disabled rotation")
+                    return True
+            return False
+        except Exception as e:
+            logger.error(f"Error forcing rotation disable: {e}")
+            return False
+
+    def _verify_rotation_disabled(self) -> bool:
+        """Verify rotation is disabled and fix if needed."""
+        try:
+            current = self.device.shell('settings get system accelerometer_rotation').output.strip()
+            if current != '0':
+                logger.warning("Rotation got enabled, forcing disable")
+                return self._force_disable_rotation()
+            return True
+        except Exception as e:
+            logger.error(f"Error verifying rotation: {e}")
+            return False
+
+    def _restore_rotation_state(self, initial_state: dict) -> None:
+        """Restore rotation to initial state."""
+        try:
+            if 'auto_rotate' in initial_state:
+                self.device.shell(f'settings put system accelerometer_rotation {initial_state["auto_rotate"]}')
+            if 'user_rotation' in initial_state:
+                self.device.shell(f'settings put system user_rotation {initial_state["user_rotation"]}')
+            logger.info("Restored initial rotation state")
+        except Exception as e:
+            logger.error(f"Error restoring rotation state: {e}")
+
     def handle_isoclipboard(self) -> bool:
         """Handle IsoClipboard for Apple Music."""
+        initial_rotation_state = None
         try:
-            # Start IsoClipboard
-            self.device.app_start(self.isoclipboard_package)
+            # Get initial rotation state
+            initial_rotation_state = self.get_rotation_settings()
+            logger.info(f"Initial rotation settings: {initial_rotation_state}")
+
+            # Force disable rotation
+            if not self._force_disable_rotation():
+                logger.error("Failed to disable rotation")
+                return False
+
+            # Start IsoClipboard with rotation handling
+            if not self._start_isoclipboard_safely():
+                if self.needs_restart("IsoClipboard"):
+                    logger.info("Retrying IsoClipboard after force-close")
+                    self.clear_restart_flag("IsoClipboard")
+                    time.sleep(2)
+                    if not self._start_isoclipboard_safely():
+                        return False
+                else:
+                    return False
+
+            # Handle fetch operation
+            if not self._handle_fetch_operation():
+                return False
+
+            # Check for Apple Music restart
+            if self.needs_restart("Apple Music"):
+                logger.info("Restarting Apple Music after force-close")
+                self.clear_restart_flag("Apple Music")
+                time.sleep(2)
+                if not self.prepare_for_action():
+                    return False
+
+            # Handle shuffle and miniplayer
+            if not self._handle_shuffle_and_miniplayer():
+                return False
+
+            return True
+        except Exception as e:
+            logger.error(f"Error with IsoClipboard: {e}")
+            return False
+        finally:
+            # Always restore initial rotation state
+            if initial_rotation_state:
+                self._restore_rotation_state(initial_rotation_state)
+
+    def _start_isoclipboard_safely(self) -> bool:
+        """Start IsoClipboard app with safety checks and rotation control."""
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                logger.info(f"Starting IsoClipboard attempt {attempt + 1}/{max_attempts}")
+
+                # Verify rotation is disabled
+                if not self._verify_rotation_disabled():
+                    logger.error("Rotation control lost before app start")
+                    continue
+
+                # Close existing instance if running
+                self.device.app_stop(self.isoclipboard_package)
+                time.sleep(1)
+
+                # Start app using activity manager
+                self.device.shell(
+                    f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top'
+                )
+                time.sleep(3)
+
+                # Verify rotation is still disabled
+                if not self._verify_rotation_disabled():
+                    logger.error("Rotation got enabled during app start")
+                    continue
+
+                # Multiple verification attempts for foreground status
+                for _ in range(3):
+                    current_app = self.device.app_current()
+                    if current_app.get('package') == self.isoclipboard_package:
+                        logger.info("IsoClipboard successfully brought to foreground")
+                        return True
+                    logger.warning("IsoClipboard not in foreground, retrying...")
+                    self.device.press("home")
+                    time.sleep(1)
+                    self.device.shell(
+                        f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top'
+                    )
+                    time.sleep(2)
+
+                logger.error(f"Failed to bring IsoClipboard to foreground on attempt {attempt + 1}")
+
+            except Exception as e:
+                logger.error(f"Error on attempt {attempt + 1}: {e}")
+
             time.sleep(2)
 
-            # Clear any pending restart flags
-            if self.needs_restart("IsoClipboard"):
-                logger.info("Restarting IsoClipboard after force-close")
-                self.clear_restart_flag("IsoClipboard")
-                time.sleep(2)
-                self.device.app_start(self.isoclipboard_package)
-                time.sleep(2)
+        logger.error("All attempts to start IsoClipboard safely failed")
+        return False
+
+    def _handle_fetch_operation(self) -> bool:
+        """Handle the FETCH button operation with rotation control."""
+        try:
+            # Verify rotation before fetch
+            if not self._verify_rotation_disabled():
+                return False
 
             # Click FETCH button
             fetch_button = self.device.xpath('//*[@resource-id="com.example.isolatedclipboard:id/buttonFetchUrl2"]')
@@ -343,18 +486,23 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             logger.info("Clicked FETCH button")
             time.sleep(15)
 
-            # Handle shuffle
-            if not self._handle_shuffle_and_miniplayer():
+            # Verify internet connection
+            if not self.check_internet_connection():
+                logger.error("No internet connection available")
                 return False
 
             return True
         except Exception as e:
-            logger.error(f"Error with IsoClipboard: {e}")
+            logger.error(f"Error in fetch operation: {e}")
             return False
 
     def _handle_shuffle_and_miniplayer(self) -> bool:
-        """Handle shuffle button and miniplayer interaction."""
+        """Handle shuffle and miniplayer with rotation control."""
         try:
+            # Verify rotation is still disabled
+            if not self._verify_rotation_disabled():
+                return False
+
             # Click shuffle button
             shuffle_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/button_shuffle"]')
             if not shuffle_button.exists:
@@ -365,7 +513,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             logger.info("Clicked shuffle button")
             time.sleep(3)
 
-            # Try multiple miniplayer selectors
+            # Try multiple miniplayer selectors with rotation checks
             miniplayer_selectors = [
                 '//*[@resource-id="com.apple.android.music:id/miniplayer_shareplay_container"]',
                 '//*[@resource-id="com.apple.android.music:id/mini_player"]',
@@ -373,6 +521,10 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             ]
 
             for selector in miniplayer_selectors:
+                # Verify rotation before each attempt
+                if not self._verify_rotation_disabled():
+                    continue
+
                 miniplayer = self.device.xpath(selector)
                 if miniplayer.exists:
                     miniplayer.click()
