@@ -647,82 +647,34 @@ class YouTubeMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def prepare_for_action(self) -> bool:
-        """Prepare YouTube Music with improved foreground verification and retry logic."""
         try:
-            logger.info("Preparing YouTube Music for action...")
-            initial_state = self.get_rotation_settings()
+            logger.info("Preparing YouTube Music without force-stop...")
 
-            # Force disable rotation
-            if not self._force_disable_rotation():
-                return False
+            # 1. Lock the device in portrait mode at the system level
+            logger.info("Disabling auto-rotate...")
+            self.device.shell("settings put system accelerometer_rotation 0")
+            self.device.shell("settings put system user_rotation 0")
 
-            max_attempts = 3
-            for attempt in range(max_attempts):
-                logger.info("Going to home screen for clean state...")
-                self.device.shell('input keyevent KEYCODE_HOME')
-                time.sleep(1)
+            # 2. Bring YouTube Music to the front. If it's already running,
+            logger.info("Launching (or bringing to front) YouTube Music...")
+            start_output = self.device.shell(
+                "am start -n com.google.android.apps.youtube.music/com.google.android.apps.youtube.music.activities.MusicActivity"
+            )
 
-                logger.info("Starting YouTube Music activity...")
-                self.device.shell(
-                    f'am start -W {self.package_name}/com.google.android.apps.youtube.music.activities.MusicActivity --activity-single-top'
-                )
-                time.sleep(3)
+            if "Warning: Activity not started" in start_output:
+                logger.info("YT Music was already running; Android brought its task to front.")
 
-                # Verify app is running
-                if not self.is_running():
-                    logger.error(f"Failed to start YouTube Music (attempt {attempt + 1})")
-                    continue
+            current_app = self.device.app_current()
+            if current_app.get('package') == "com.google.android.apps.youtube.music":
+                logger.info("YouTube Music is in foreground. Playback should remain intact.")
+            else:
+                logger.warning("YouTube Music did not come to foreground. It may be locked or overridden by OS.")
 
-                # Verify app is in foreground
-                current_app = self.device.app_current()
-                if current_app.get('package') != self.package_name:
-                    logger.error(f"YouTube Music not in foreground (attempt {attempt + 1})")
-
-                    # Recovery steps
-                    logger.info("Attempting recovery steps...")
-
-                    # Step 1: Go home and retry direct launch
-                    self.device.shell('input keyevent KEYCODE_HOME')
-                    time.sleep(1)
-                    self.device.app_start(self.package_name)
-                    time.sleep(2)
-
-                    # Check if recovery worked
-                    current_app = self.device.app_current()
-                    if current_app.get('package') == self.package_name:
-                        logger.info("Recovery successful using direct launch")
-                        return True
-
-                    # Step 2: Try force-stop and restart
-                    logger.info("Trying force-stop and restart...")
-                    self.force_stop()
-                    time.sleep(2)
-                    self.device.shell('input keyevent KEYCODE_HOME')
-                    time.sleep(1)
-                    self.device.shell(
-                        f'am start -W {self.package_name}/com.google.android.apps.youtube.music.activities.MusicActivity --activity-single-top'
-                    )
-                    time.sleep(3)
-
-                    current_app = self.device.app_current()
-                    if current_app.get('package') == self.package_name:
-                        logger.info("Recovery successful using force-stop and restart")
-                        return True
-
-                    continue
-
-                logger.info("YouTube Music successfully prepared for action")
-                return True
-
-            logger.error("Failed to prepare YouTube Music after all attempts")
-            return False
+            return True
 
         except Exception as e:
-            logger.error(f"Error preparing YouTube Music: {e}")
+            logger.error(f"Error preparing YouTube Music (no force-stop): {e}")
             return False
-        finally:
-            # Restore original rotation state
-            self._restore_rotation_state(initial_state)
 
     def _verify_and_cleanup(self) -> bool:
         """Final verification and cleanup steps."""
