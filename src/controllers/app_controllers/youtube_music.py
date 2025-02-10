@@ -150,6 +150,7 @@ class YouTubeMusicController(BaseController, PopupMonitorMixin):
                 logger.error("Failed to disable rotation")
                 return False
 
+            # Start IsoClipboard with restart handling
             if not self._start_isoclipboard_safely():
                 if self.needs_restart("IsoClipboard"):
                     logger.info("Retrying IsoClipboard after force-close")
@@ -160,6 +161,7 @@ class YouTubeMusicController(BaseController, PopupMonitorMixin):
                 else:
                     return False
 
+            # Handle fetch operation
             if not self._handle_fetch_operation():
                 return False
 
@@ -364,6 +366,7 @@ class YouTubeMusicController(BaseController, PopupMonitorMixin):
         return False
 
     def next_track(self) -> bool:
+        """Skip to next track with popup monitoring."""
         try:
             logger.info("Attempting next track...")
 
@@ -414,6 +417,7 @@ class YouTubeMusicController(BaseController, PopupMonitorMixin):
                 return False
 
     def previous_track(self) -> bool:
+        """Go to previous track with popup monitoring."""
         try:
             logger.info("Attempting previous track...")
 
@@ -615,6 +619,21 @@ class YouTubeMusicController(BaseController, PopupMonitorMixin):
             return bool(self.device(packageName=self.package_name).exists)
         except Exception as e:
             logger.error(f"Error checking if YouTube Music is running: {e}")
+            return False
+
+    def manage_window_state(self, minimize: bool = True) -> bool:
+        """Manage YouTube Music window state."""
+        try:
+            if minimize:
+                self.device.press("home")
+                logger.info("Minimized YouTube Music window")
+            else:
+                self.device.app_start(self.package_name)
+                logger.info("Maximized YouTube Music window")
+            time.sleep(1)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to manage window state: {e}")
             return False
 
     def force_stop(self) -> bool:
