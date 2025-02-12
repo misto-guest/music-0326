@@ -21,8 +21,6 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
         self.package_name = AppleMusicConfig.PACKAGE_NAME
         self.app_name = AppleMusicConfig.APP_NAME
         self.isoclipboard_package = "com.example.isolatedclipboard"
-        self._screen_unlocked = False  # Track unlock state
-        self._last_unlock_time = 0  # Track last unlock time
 
         # Register apps for monitoring
         self.register_app_for_monitoring("Apple Music")
@@ -63,68 +61,44 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def unlock_screen(self) -> bool:
-        """Unlock screen with state tracking."""
-        current_time = time.time()
-        if self._screen_unlocked and (current_time - self._last_unlock_time) < 30:
-            logger.debug("Screen was recently unlocked, skipping unlock")
-            return True
-
+        """Unlock screen without using power button."""
         try:
             logger.info("Starting screen unlock sequence")
-            # First attempt: gentle swipe
+            # Use swipe directly to wake and unlock
             self.device.swipe(540, 1800, 540, 900)
             time.sleep(0.5)
 
+            # Verify unlock was successful
             if self.device(resourceId="android:id/statusBarBackground").exists:
-                self._update_unlock_state(True)
+                logger.info("Screen unlocked successfully")
                 return True
 
-            # Second attempt with KEYCODE_WAKEUP
+            # Try using KEYCODE_WAKEUP if first attempt failed
             logger.warning("First unlock attempt failed, trying with KEYCODE_WAKEUP")
             self.device.shell('input keyevent KEYCODE_WAKEUP')
             time.sleep(0.1)
             self.device.swipe(540, 1800, 540, 900)
 
             if self.device(clickable=True).exists:
-                self._update_unlock_state(True)
+                logger.info("Screen appears to be unlocked (found clickable elements)")
                 return True
 
-            self._update_unlock_state(False)
+            logger.error("Failed to unlock screen")
             return False
         except Exception as e:
             logger.error(f"Error during screen unlock: {e}")
-            self._update_unlock_state(False)
             return False
 
-
-    def _update_unlock_state(self, unlocked: bool) -> None:
-        """Update screen unlock state tracking."""
-        self._screen_unlocked = unlocked
-        if unlocked:
-            self._last_unlock_time = time.time()
-            logger.info("Screen unlock state updated: Unlocked")
-        else:
-            logger.info("Screen unlock state updated: Locked")
-
     def ensure_screen_active(self) -> bool:
-        """Ensure device screen is active with state caching."""
+        """Ensure device screen is active."""
         try:
-            # Check if screen was recently unlocked
-            if self._screen_unlocked:
-                current_time = time.time()
-                if (current_time - self._last_unlock_time) < 30:
-                    logger.debug("Screen confirmed active (cached state)")
-                    return True
-
-            # If not recently unlocked, check actual state
             device_info = self.device.info
             screen_state = device_info.get('screenState') if device_info else None
             logger.info(f"Current screen state: {screen_state}")
-
             return self.unlock_screen()
         except Exception as e:
             logger.error(f"Error ensuring screen active: {e}")
-            return self.unlock_screen()
+            return self.unlock_screen()  # Try unlock as fallback
 
     def check_internet_connection(self, max_retries: int = 5, delay: int = 2) -> bool:
         """Check internet connection using netstat."""
@@ -153,16 +127,17 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
     def prepare_for_action(self) -> bool:
         """Prepare device for performing an action."""
         try:
-            if not self._screen_unlocked:
-                if not self.ensure_screen_active():
-                    logger.error("Failed to ensure screen active before action")
-                    return False
+            if not self.ensure_screen_active():
+                logger.error("Failed to ensure screen active before action")
+                return False
 
+            # Clear any pending restart flags
             if self.needs_restart("Apple Music"):
                 logger.info("Restarting Apple Music after force-close")
                 self.clear_restart_flag("Apple Music")
                 time.sleep(2)
 
+            # Bring app to foreground
             self.manage_window_state(minimize=False)
             time.sleep(1)
 
