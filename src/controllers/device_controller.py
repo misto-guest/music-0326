@@ -8,6 +8,7 @@ from src.utils.logging_utils import setup_logger
 from src.constants.app_configs import MusicApps
 from src.controllers.app_controllers.apple_music import AppleMusicController
 from src.controllers.app_controllers.youtube_music import YouTubeMusicController
+from src.controllers.app_controllers.amazon_music import AmazonMusicController
 
 logger = setup_logger(__name__)
 
@@ -26,18 +27,17 @@ class DeviceController:
         """Initialize controllers for each music app."""
         self.app_controllers = {
             'apple_music': AppleMusicController(self.device),
-            'youtube_music': YouTubeMusicController(self.device)
+            'youtube_music': YouTubeMusicController(self.device),
+            'amazon_music': AmazonMusicController(self.device)
         }
 
     def get_app_name_from_package(self, package_name: str) -> str:
         """Get display name for a package, handling clones appropriately."""
         if package_name in self.music_apps:
             return self.music_apps[package_name]
-
         for base_pkg, base_name in self.base_packages.items():
             if package_name.startswith(base_pkg):
                 return f"{base_name} Clone (Package: {package_name})"
-
         return f"Unknown App (Package: {package_name})"
 
     def check_running_music_apps(self) -> Optional[str]:
@@ -47,12 +47,10 @@ class DeviceController:
             for controller in self.app_controllers.values():
                 if controller.is_running():
                     running_apps.append(controller.app_name)
-
             if running_apps:
                 logger.info("Running music apps: %s", running_apps)
             else:
                 logger.info("No music apps running")
-
             return running_apps
         except Exception as e:
             logger.error("Error checking running apps: %s", e)
@@ -65,7 +63,6 @@ class DeviceController:
                 if controller.is_running():
                     logger.info(f"Closing {controller.app_name}")
                     controller.stop_app()
-
             self.check_running_music_apps()
         except Exception as e:
             logger.error("Error closing music apps: %s", e)
@@ -76,7 +73,6 @@ class DeviceController:
             for controller in self.app_controllers.values():
                 logger.info(f"Force stopping {controller.app_name}")
                 controller.force_stop()
-
             self.check_running_music_apps()
         except Exception as e:
             logger.error("Error force stopping apps: %s", e)
@@ -89,7 +85,6 @@ class DeviceController:
             if not controller:
                 logger.error(f"No controller found for app type: {app_type}")
                 return
-
             # Start IsoClipboard and perform actions
             controller.handle_isoclipboard()
         except Exception as e:
@@ -98,9 +93,8 @@ class DeviceController:
     def control_music_playback(self, app_type: str, action: str):
         """
         Control music playback for specified app.
-
         Args:
-            app_type: Type of music app ('apple' or 'youtube')
+            app_type: Type of music app ('apple', 'youtube', or 'amazon')
             action: Playback action ('play', 'pause', 'next', 'previous', 'like')
         """
         try:
@@ -108,7 +102,6 @@ class DeviceController:
             if not controller:
                 logger.error(f"No controller found for app type: {app_type}")
                 return
-
             actions = {
                 'play': controller.play_pause,
                 'pause': controller.play_pause,
@@ -116,7 +109,6 @@ class DeviceController:
                 'previous': controller.previous_track,
                 'like': controller.like_current_song
             }
-
             if action in actions:
                 actions[action]()
             else:
