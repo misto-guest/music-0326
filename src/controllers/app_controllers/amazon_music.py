@@ -289,7 +289,7 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
                 return False
 
             # Click shuffle button
-            shuffle_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/shuffle_button"]')
+            shuffle_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/ShuffleButton"]')
             if not shuffle_button.exists:
                 logger.error("Shuffle button not found")
                 return False
