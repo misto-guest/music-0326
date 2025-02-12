@@ -251,20 +251,6 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
         try:
             logger.info("Attempting next track...")
 
-            if not self.prepare_for_action():
-                if self.needs_restart("Apple Music"):
-                    logger.info("Retrying after force-close")
-                    self.clear_restart_flag("Apple Music")
-                    time.sleep(2)
-                    if not self.prepare_for_action():
-                        logger.info("Using keyevent fallback")
-                        self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
-                        return True
-                else:
-                    logger.info("Using keyevent fallback")
-                    self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
-                    return True
-
             next_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/next_fast_forward"]')
             if not next_button.exists:
                 logger.info("Next button not found, using keyevent")
@@ -291,20 +277,6 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
         try:
             logger.info("Attempting previous track...")
 
-            if not self.prepare_for_action():
-                if self.needs_restart("Apple Music"):
-                    logger.info("Retrying after force-close")
-                    self.clear_restart_flag("Apple Music")
-                    time.sleep(2)
-                    if not self.prepare_for_action():
-                        logger.info("Using keyevent fallback")
-                        self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
-                        return True
-                else:
-                    logger.info("Using keyevent fallback")
-                    self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
-                    return True
-
             prev_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/previous_rewind"]')
             if not prev_button.exists:
                 logger.info("Previous button not found, using keyevent")
@@ -316,7 +288,6 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             logger.info("Clicked previous track button")
             time.sleep(2)
             return True
-
         except Exception as e:
             logger.error(f"Error going to previous track: {e}")
             try:
@@ -331,16 +302,6 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
         """Like the currently playing song."""
         try:
             logger.info("Starting like song action...")
-
-            if not self.prepare_for_action():
-                if self.needs_restart("Apple Music"):
-                    logger.info("Retrying after force-close")
-                    self.clear_restart_flag("Apple Music")
-                    time.sleep(2)
-                    if not self.prepare_for_action():
-                        return False
-                else:
-                    return False
 
             like_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/list_favorite_icon"]')
             if not like_button.exists:
