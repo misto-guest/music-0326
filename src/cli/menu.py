@@ -49,10 +49,23 @@ class CLI:
             'a6': ('Apple Music: Toggle Shuffle',
                    lambda: self.controller.app_controllers['apple_music'].shuffle()),
 
+            # Amazon Music Controls
+            'm1': ('Amazon Music: Play/Pause',
+                   lambda: self.controller.app_controllers['amazon_music'].play_pause()),
+            'm2': ('Amazon Music: Next Track',
+                   lambda: self.controller.app_controllers['amazon_music'].next_track()),
+            'm3': ('Amazon Music: Previous Track',
+                   lambda: self.controller.app_controllers['amazon_music'].previous_track()),
+            'm4': ('Amazon Music: IsoClipboard',
+                   lambda: self.controller.app_controllers['amazon_music'].handle_isoclipboard()),
+            'm5': ('Amazon Music: Like Current Song',
+                   lambda: self.controller.app_controllers['amazon_music'].like_current_song()),
+
             # Automation Commands
             'sy': ('Start YouTube Music Automation', self.start_youtube_automation),
             'sa': ('Start Apple Music Automation', self.start_apple_automation),
-            'sb': ('Start Both Apps Automation', self.start_automation),
+            'sm': ('Start Amazon Music Automation', self.start_amazon_automation),
+            'sb': ('Start All Apps Automation', self.start_automation),
             'stop': ('Stop Automation', self.stop_automation),
             'status': ('Show Automation Status', self.show_automation_status),
 
@@ -68,10 +81,8 @@ class CLI:
             if not self.automation:
                 logger.info("Initializing YouTube Music automation...")
                 self.automation = MultiMusicAutomation(
-                    self.controller.app_controllers['youtube_music'],
-                    None
+                    youtube_controller=self.controller.app_controllers['youtube_music']
                 )
-
             success = self.automation.start_youtube_only()
             if success:
                 logger.info("YouTube Music automation started successfully")
@@ -80,7 +91,6 @@ class CLI:
                 logger.error("Failed to start YouTube Music automation")
                 self.automation = None
                 return False
-
         except Exception as e:
             logger.error(f"Failed to start YouTube Music automation: {e}")
             self.automation = None
@@ -92,10 +102,8 @@ class CLI:
             if not self.automation:
                 logger.info("Initializing Apple Music automation...")
                 self.automation = MultiMusicAutomation(
-                    None,
-                    self.controller.app_controllers['apple_music']
+                    apple_controller=self.controller.app_controllers['apple_music']
                 )
-
             success = self.automation.start_apple_only()
             if success:
                 logger.info("Apple Music automation started successfully")
@@ -104,22 +112,42 @@ class CLI:
                 logger.error("Failed to start Apple Music automation")
                 self.automation = None
                 return False
-
         except Exception as e:
             logger.error(f"Failed to start Apple Music automation: {e}")
             self.automation = None
             return False
 
+    def start_amazon_automation(self) -> bool:
+        """Start Amazon Music automation only."""
+        try:
+            if not self.automation:
+                logger.info("Initializing Amazon Music automation...")
+                self.automation = MultiMusicAutomation(
+                    amazon_controller=self.controller.app_controllers['amazon_music']
+                )
+            success = self.automation.start_amazon_only()
+            if success:
+                logger.info("Amazon Music automation started successfully")
+                return True
+            else:
+                logger.error("Failed to start Amazon Music automation")
+                self.automation = None
+                return False
+        except Exception as e:
+            logger.error(f"Failed to start Amazon Music automation: {e}")
+            self.automation = None
+            return False
+
     def start_automation(self) -> bool:
-        """Start automation for both apps."""
+        """Start automation for all apps."""
         try:
             if not self.automation:
                 logger.info("Initializing multi-app automation...")
                 self.automation = MultiMusicAutomation(
-                    self.controller.app_controllers['youtube_music'],
-                    self.controller.app_controllers['apple_music']
+                    youtube_controller=self.controller.app_controllers.get('youtube_music'),
+                    apple_controller=self.controller.app_controllers.get('apple_music'),
+                    amazon_controller=self.controller.app_controllers.get('amazon_music')
                 )
-
             success = self.automation.start_automation()
             if success:
                 logger.info("Multi-app automation started successfully")
@@ -128,7 +156,6 @@ class CLI:
                 logger.error("Failed to start multi-app automation")
                 self.automation = None
                 return False
-
         except Exception as e:
             logger.error(f"Failed to start automation: {e}")
             self.automation = None
@@ -155,17 +182,21 @@ class CLI:
                 status = "Running" if self.automation.running else "Stopped"
                 logger.info(f"Automation status: {status}")
                 if self.automation.running:
-                    yt_last = time.strftime('%H:%M:%S', time.localtime(self.automation.last_youtube_action))
-                    am_last = time.strftime('%H:%M:%S', time.localtime(self.automation.last_apple_action))
-                    yt_iso = time.strftime('%H:%M:%S', time.localtime(self.automation.last_youtube_isoclipboard))
-                    am_iso = time.strftime('%H:%M:%S', time.localtime(self.automation.last_apple_isoclipboard))
-
                     if self.automation.youtube_controller:
+                        yt_last = time.strftime('%H:%M:%S', time.localtime(self.automation.last_youtube_action))
+                        yt_iso = time.strftime('%H:%M:%S', time.localtime(self.automation.last_youtube_isoclipboard))
                         logger.info(f"Last YouTube Music action: {yt_last}")
                         logger.info(f"Last YouTube Music IsoClipboard: {yt_iso}")
                     if self.automation.apple_controller:
+                        am_last = time.strftime('%H:%M:%S', time.localtime(self.automation.last_apple_action))
+                        am_iso = time.strftime('%H:%M:%S', time.localtime(self.automation.last_apple_isoclipboard))
                         logger.info(f"Last Apple Music action: {am_last}")
                         logger.info(f"Last Apple Music IsoClipboard: {am_iso}")
+                    if self.automation.amazon_controller:
+                        amz_last = time.strftime('%H:%M:%S', time.localtime(self.automation.last_amazon_action))
+                        amz_iso = time.strftime('%H:%M:%S', time.localtime(self.automation.last_amazon_isoclipboard))
+                        logger.info(f"Last Amazon Music action: {amz_last}")
+                        logger.info(f"Last Amazon Music IsoClipboard: {amz_iso}")
             else:
                 logger.info("Automation status: Not initialized")
             return True
@@ -185,14 +216,19 @@ class CLI:
             if key.startswith('a'):
                 print(f"{key} - {description}")
 
+        print("\nAmazon Music Controls:")
+        for key, (description, _) in self.commands.items():
+            if key.startswith('m'):
+                print(f"{key} - {description}")
+
         print("\nAutomation Controls:")
         for key, (description, _) in self.commands.items():
-            if key in ['sy', 'sa', 'sb', 'stop', 'status']:
+            if key in ['sy', 'sa', 'sm', 'sb', 'stop', 'status']:
                 print(f"{key} - {description}")
 
         print("\nGeneral Commands:")
         for key, (description, _) in self.commands.items():
-            if not key.startswith(('y', 'a')) and key not in ['sy', 'sa', 'sb', 'stop', 'status']:
+            if not key.startswith(('y', 'a', 'm')) and key not in ['sy', 'sa', 'sm', 'sb', 'stop', 'status']:
                 print(f"{key} - {description}")
 
     def handle_command(self, command: str) -> bool:
@@ -208,14 +244,12 @@ class CLI:
         try:
             logger.info(f"Executing: {description}")
             result = func()
-
             # For functions that return success/failure status
             if isinstance(result, bool):
                 if not result:
                     logger.error(f"Failed to execute: {description}")
                 return True
             return True
-
         except Exception as e:
             logger.error(f"Error executing {description}: {e}")
             return True
@@ -223,18 +257,14 @@ class CLI:
     def run(self):
         """Run the main CLI loop."""
         logger.info(f"Running CLI for device: {self.device_id}")
-
         while True:
             try:
                 self.display_menu()
                 command = input("\nEnter command: ").lower().strip()
-
                 if not self.handle_command(command):
                     logger.info("Exiting...")
                     break
-
                 time.sleep(0.5)
-
             except KeyboardInterrupt:
                 logger.info("\nReceived keyboard interrupt, exiting...")
                 self.stop_automation()
