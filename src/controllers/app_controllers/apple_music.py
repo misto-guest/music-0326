@@ -157,6 +157,17 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 self.device.press('home')
                 time.sleep(1)
             else:
+                if self.is_running():
+                    self.device.press('recent')
+                    time.sleep(0.5)
+                    app_window = self.device(packageName=self.package_name)
+                    if app_window.exists:
+                        app_window.click()
+                        time.sleep(0.5)
+                        return True
+                    self.device.press('back')
+                    time.sleep(0.5)
+
                 self.device.app_start(self.package_name)
                 time.sleep(1)
             return True
