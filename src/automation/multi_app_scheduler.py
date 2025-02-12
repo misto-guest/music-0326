@@ -62,7 +62,7 @@ class MultiMusicAutomation(MutexMixin):
         if app_type == "youtube_music":
             seconds = random.randint(45, 6 * 60)  # 45s to 6m for YouTube
         elif app_type == "apple_music":
-            seconds = random.randint(60, 2 * 60)  # 1m to 7m for Apple Music
+            seconds = random.randint(60, 7 * 60)  # 1m to 7m for Apple Music
         else:  # amazon_music
             seconds = random.randint(50, 5 * 60)  # 50s to 5m for Amazon Music
 
