@@ -62,7 +62,7 @@ class MultiMusicAutomation(MutexMixin):
         if app_type == "youtube_music":
             seconds = random.randint(45, 6 * 60)  # 45s to 6m for YouTube
         elif app_type == "apple_music":
-            seconds = random.randint(60, 7 * 60)  # 1m to 7m for Apple Music
+            seconds = random.randint(60, 2 * 60)  # 1m to 7m for Apple Music
         else:  # amazon_music
             seconds = random.randint(50, 5 * 60)  # 50s to 5m for Amazon Music
 
@@ -274,11 +274,17 @@ class MultiMusicAutomation(MutexMixin):
                 delay = self.get_music_control_delay("apple_music")
                 time.sleep(delay)
                 logger.info(f"Performing Apple Music action: {action_name}")
-                if self._run_device_locked(self.apple_controller.prepare_for_action):
-                    if self._run_device_locked(action):
-                        self.last_apple_action = time.time()
-                        self._run_device_locked(self.apple_controller.device.press, "home")
-                        logger.info(f"Apple Music {action_name} successful")
+
+                def combined_action():
+                    if self.apple_controller.prepare_for_action():
+                        return action()
+                    return False
+
+                if self._run_device_locked(combined_action):
+                    self.last_apple_action = time.time()
+                    self._run_device_locked(self.apple_controller.device.press, "home")
+                    logger.info(f"Apple Music {action_name} successful")
+
             except Exception as e:
                 logger.error(f"Error in Apple Music automation: {e}")
                 time.sleep(60)

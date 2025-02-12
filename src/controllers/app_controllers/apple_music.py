@@ -316,6 +316,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             logger.info("Clicked previous track button")
             time.sleep(2)
             return True
+
         except Exception as e:
             logger.error(f"Error going to previous track: {e}")
             try:
