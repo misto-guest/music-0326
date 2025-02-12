@@ -8,7 +8,7 @@ from src.utils.logging_utils import setup_logger
 from src.controllers.app_controllers.youtube_music import YouTubeMusicController
 from src.controllers.app_controllers.apple_music import AppleMusicController
 from src.controllers.app_controllers.amazon_music import AmazonMusicController
-from src.controllers.mutex_mixin import MutexMixin
+from src.controllers.mutex_mixin import MutexMixin, with_device_lock
 
 logger = setup_logger(__name__)
 
