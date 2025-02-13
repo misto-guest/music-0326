@@ -120,22 +120,53 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
     def prepare_for_action(self) -> bool:
         try:
             if not self.ensure_screen_active():
-                logger.error("Failed to ensure screen active before action")
+                logger.error("Failed to ensure screen active before action.")
                 return False
 
-            if self.needs_restart("Apple Music"):
-                logger.info("Restarting Apple Music after force-close")
-                self.clear_restart_flag("Apple Music")
-                time.sleep(2)
+            # First, check the current foreground app via uiautomator2
+            current_app_info = self.device.app_current()
+            current_package = current_app_info.get("package", "")
+            logger.info(f"Current active package: {current_package}")
 
-            if not self.manage_window_state(minimize=False):
-                logger.error("Failed to bring Apple Music to foreground")
+            expected_ids = ["com.apple.android.music", ".amcKGERRbgaxjBBPED"]
+
+            def is_apple_music_active(text: str) -> bool:
+                for identifier in expected_ids:
+                    if identifier in text:
+                        return True
                 return False
 
-            time.sleep(1)
-            if not self.is_running():
-                logger.error("App not in foreground after preparation")
-                return False
+            if not is_apple_music_active(current_package):
+                logger.info("Apple Music not detected in foreground via app_current(). Checking recents...")
+                recents = self.device.shell("dumpsys activity recents | grep 'Recent #' | grep 'type=standard'")
+                logger.info(f"Recents output: {recents}")
+                if not is_apple_music_active(recents):
+                    logger.info("Apple Music is not running according to recents. Attempting to bring it forward.")
+                else:
+                    logger.info(
+                        "Apple Music is found in recents, but not active. Attempting to bring it to foreground.")
+
+                # Use the reorder flag to bring Apple Music to the foreground.
+                command = (
+                    "am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "
+                    "-n com.apple.android.music/.onboarding.activities.SplashActivity -f 0x2000000"
+                )
+                logger.info(f"Executing command: {command}")
+                result = self.device.shell(command)
+                logger.info(f"Command result: {result}")
+                time.sleep(3)
+
+                # Re-check the active app.
+                current_app_info = self.device.app_current()
+                current_package = current_app_info.get("package", "")
+                logger.info(f"After command, current active package: {current_package}")
+                if not is_apple_music_active(current_package):
+                    logger.error("Apple Music is still not in the foreground after the command.")
+                    return False
+                else:
+                    logger.info("Apple Music has been successfully brought to the foreground.")
+            else:
+                logger.info("Apple Music is already in the foreground.")
 
             return True
         except Exception as e:
@@ -254,21 +285,24 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 logger.info("Using keyevent fallback for next track")
                 self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
                 time.sleep(2)
+                self._ensure_mini_player()
                 return True
+
+            # Add a 5-second wait before checking for the button
+            time.sleep(5)
 
             next_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/next_fast_forward"]')
             if not next_button.exists:
                 logger.info("Next button not found, using keyevent fallback")
                 self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
                 time.sleep(2)
+                self._ensure_mini_player()
                 return True
 
             next_button.click()
             logger.info("Clicked next track button")
             time.sleep(2)
-
             self._ensure_mini_player()
-
             return True
         except Exception as e:
             logger.error(f"Error skipping to next track: {e}")
@@ -276,6 +310,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
                 logger.info("Sent next track keyevent after error")
                 time.sleep(2)
+                self._ensure_mini_player()
                 return True
             except:
                 return False
@@ -546,12 +581,14 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def _ensure_mini_player(self):
-        """Ensure the mini_player element is clicked to correct state."""
         try:
+            logger.info("Searching for mini_player element...")
             mini_player = self.device.xpath('//*[@resource-id="com.apple.android.music:id/mini_player"]')
             if mini_player.exists:
                 mini_player.click()
                 logger.info("Clicked mini_player to ensure correct Apple Music state")
                 time.sleep(1)
+            else:
+                logger.info("mini_player element not found.")
         except Exception as e:
             logger.error(f"Error ensuring mini_player state: {e}")
