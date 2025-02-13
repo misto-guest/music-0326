@@ -272,6 +272,10 @@ class YouTubeMusicController(BaseController, PopupMonitorMixin):
             if not self._verify_rotation_disabled():
                 return False
 
+            # Add a 5-second pause before clicking the three dots menu
+            time.sleep(5)
+            logger.info("Waiting 5 seconds before attempting to click the three dots menu...")
+
             # Try multiple XPaths for three dots menu
             three_dots_xpaths = [
                 ('//*[@resource-id="com.google.android.apps.youtube.music:id/elements_container"]'
