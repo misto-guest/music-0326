@@ -1,5 +1,3 @@
-# src/cli/menu.py
-
 import time
 from typing import Dict, Callable, Optional
 from src.controllers.device_controller import DeviceController
@@ -206,7 +204,6 @@ class CLI:
             return False
 
     def start_all_automation(self) -> bool:
-        """Start automation for all music apps."""
         try:
             if not self.automation:
                 logger.info("Initializing all music apps automation...")
@@ -287,7 +284,6 @@ class CLI:
             return False
 
     def display_menu(self):
-        """Display the main menu."""
         print("\nYouTube Music Controls:")
         for key, (description, _) in self.commands.items():
             if key.startswith('y'):
@@ -314,7 +310,6 @@ class CLI:
                 print(f"{key} - {description}")
 
     def handle_command(self, command: str) -> bool:
-        """Handle user command."""
         if command not in self.commands:
             logger.warning(f"Unknown command: {command}")
             return True
@@ -326,11 +321,8 @@ class CLI:
         try:
             logger.info(f"Executing: {description}")
             result = func()
-            # For functions that return success/failure status
-            if isinstance(result, bool):
-                if not result:
-                    logger.error(f"Failed to execute: {description}")
-                return True
+            if isinstance(result, bool) and not result:
+                logger.error(f"Failed to execute: {description}")
             return True
         except Exception as e:
             logger.error(f"Error executing {description}: {e}")
