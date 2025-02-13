@@ -1,3 +1,5 @@
+# src/cli/menu.py
+
 import time
 from typing import Dict, Callable, Optional
 from src.controllers.device_controller import DeviceController
