@@ -48,6 +48,12 @@ class YouTubeMusicConfig:
     PREV_BUTTON = "player_control_previous_button"
     SHUFFLE_BUTTON = "shuffle_button"
 
+class AmazonMusicConfig:
+    """Configuration for Amazon Music app."""
+    PACKAGE_NAME = "com.amazon.mp3"
+    APP_NAME = "Amazon Music"
+    MAIN_ACTIVITY = "com.amazon.mp3.activity.MainActivity"
+
 
 class IsoClipboardConfig:
     """Configuration for IsoClipboard app."""
