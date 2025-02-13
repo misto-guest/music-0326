@@ -1,7 +1,7 @@
 # src/controllers/app_controllers/apple_music.py
 
 import time
-from typing import Optional, Dict
+from typing import Dict
 import uiautomator2 as u2
 from src.controllers.base_controller import BaseController
 from src.controllers.mixins.popup_monitor import PopupMonitorMixin
@@ -41,13 +41,11 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error in cleanup: {e}")
 
     def setup_screen_settings(self) -> bool:
-        """Setup screen timeout and stay-on settings."""
         try:
             logger.info("Setting up screen settings")
-            # Set longer screen timeout (30 minutes)
             self.device.shell('settings put system screen_off_timeout 1800000')
-            # Keep screen on while plugged in
             self.device.shell('settings put global stay_on_while_plugged_in 3')
+
             # Verify settings
             timeout = self.device.shell('settings get system screen_off_timeout')
             if '1800000' in str(timeout):
@@ -61,44 +59,37 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def unlock_screen(self) -> bool:
-        """Unlock screen without using power button."""
         try:
-            logger.info("Starting screen unlock sequence")
-            # Use swipe directly to wake and unlock
-            self.device.swipe(540, 1800, 540, 900)
-            time.sleep(0.5)
+            logger.info("Ensuring screen is on (no swipes).")
 
-            # Verify unlock was successful
-            if self.device(resourceId="android:id/statusBarBackground").exists:
-                logger.info("Screen unlocked successfully")
-                return True
-
-            # Try using KEYCODE_WAKEUP if first attempt failed
-            logger.warning("First unlock attempt failed, trying with KEYCODE_WAKEUP")
+            # Send KEYCODE_WAKEUP to turn screen on
             self.device.shell('input keyevent KEYCODE_WAKEUP')
-            time.sleep(0.1)
-            self.device.swipe(540, 1800, 540, 900)
+            time.sleep(1)
+
+            # Press HOME to exit any lock screen if there's no secure lock
+            self.device.press('home')
+            time.sleep(1)
 
             if self.device(clickable=True).exists:
-                logger.info("Screen appears to be unlocked (found clickable elements)")
+                logger.info("Screen is on and has clickable elements.")
                 return True
 
-            logger.error("Failed to unlock screen")
-            return False
+            logger.warning("Screen might still be locked or unresponsive, continuing anyway.")
+            return True
         except Exception as e:
-            logger.error(f"Error during screen unlock: {e}")
+            logger.error(f"Error during simplified screen unlock: {e}")
             return False
 
     def ensure_screen_active(self) -> bool:
-        """Ensure device screen is active."""
         try:
             device_info = self.device.info
             screen_state = device_info.get('screenState') if device_info else None
             logger.info(f"Current screen state: {screen_state}")
+
             return self.unlock_screen()
         except Exception as e:
             logger.error(f"Error ensuring screen active: {e}")
-            return self.unlock_screen()  # Try unlock as fallback
+            return self.unlock_screen()
 
     def check_internet_connection(self, max_retries: int = 5, delay: int = 2) -> bool:
         """Check internet connection using netstat."""
@@ -142,7 +133,6 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 return False
 
             time.sleep(1)
-
             if not self.is_running():
                 logger.error("App not in foreground after preparation")
                 return False
@@ -159,6 +149,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 time.sleep(1)
                 return True
             else:
+                # Press home first, then start app
                 self.device.press('home')
                 time.sleep(1)
                 return self.start_app()
@@ -167,12 +158,11 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def start_app(self) -> bool:
-        """Start Apple Music app."""
         try:
             logger.info("Starting Apple Music via app_start()")
             self.device.app_start(self.package_name)
             time.sleep(2)
-            # Check if running
+
             if self.is_running():
                 logger.info("Apple Music is now in the foreground")
                 return True
@@ -215,18 +205,15 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def play_pause(self) -> bool:
-        """Toggle play/pause state with keyevent fallback."""
         try:
             logger.info("Attempting play/pause...")
 
-            # Ensure app is foreground:
             if not self.prepare_for_action():
                 if self.needs_restart("Apple Music"):
                     logger.info("Retrying after force-close")
                     self.clear_restart_flag("Apple Music")
                     time.sleep(2)
                     if not self.prepare_for_action():
-                        # Fallback: keyevent
                         logger.info("Using keyevent fallback for play/pause")
                         self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
                         return True
@@ -257,11 +244,9 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 return False
 
     def next_track(self) -> bool:
-        """Skip to next track with keyevent fallback."""
         try:
             logger.info("Attempting next track...")
 
-            # Ensure app is foreground:
             if not self.prepare_for_action():
                 logger.info("Using keyevent fallback for next track")
                 self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
@@ -290,11 +275,9 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 return False
 
     def previous_track(self) -> bool:
-        """Go to previous track with keyevent fallback."""
         try:
             logger.info("Attempting previous track...")
 
-            # Ensure app is foreground:
             if not self.prepare_for_action():
                 logger.info("Using keyevent fallback for previous track")
                 self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
@@ -323,11 +306,10 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 return False
 
     def like_current_song(self) -> bool:
-        """Like the currently playing song."""
         try:
             logger.info("Starting like song action...")
 
-            # Ensure app is foreground:
+            # Bring Apple Music to the foreground if needed:
             if not self.prepare_for_action():
                 logger.error("Cannot like song, app wasn't prepared/foregrounded.")
                 return False
@@ -397,10 +379,8 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error restoring rotation state: {e}")
 
     def handle_isoclipboard(self) -> bool:
-        """Handle IsoClipboard for Apple Music."""
         initial_rotation_state = None
         try:
-            # Get initial rotation state
             initial_rotation_state = self.get_rotation_settings()
             logger.info(f"Initial rotation settings: {initial_rotation_state}")
 
@@ -409,7 +389,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 logger.error("Failed to disable rotation")
                 return False
 
-            # Start IsoClipboard with rotation handling
+            # Start IsoClipboard
             if not self._start_isoclipboard_safely():
                 if self.needs_restart("IsoClipboard"):
                     logger.info("Retrying IsoClipboard after force-close")
@@ -420,11 +400,11 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 else:
                     return False
 
-            # Handle fetch operation
+            # Click FETCH
             if not self._handle_fetch_operation():
                 return False
 
-            # Check for Apple Music restart
+            # Check if Apple Music was closed
             if self.needs_restart("Apple Music"):
                 logger.info("Restarting Apple Music after force-close")
                 self.clear_restart_flag("Apple Music")
@@ -432,7 +412,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 if not self.prepare_for_action():
                     return False
 
-            # Handle shuffle and miniplayer
+            # Shuffle + miniplayer
             if not self._handle_shuffle_and_miniplayer():
                 return False
 
@@ -441,38 +421,31 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error with IsoClipboard: {e}")
             return False
         finally:
-            # Always restore initial rotation state
+            # Restore rotation
             if initial_rotation_state:
                 self._restore_rotation_state(initial_rotation_state)
 
     def _start_isoclipboard_safely(self) -> bool:
-        """Start IsoClipboard app with safety checks and rotation control."""
         max_attempts = 3
         for attempt in range(max_attempts):
             try:
                 logger.info(f"Starting IsoClipboard attempt {attempt + 1}/{max_attempts}")
 
-                # Verify rotation is disabled
                 if not self._verify_rotation_disabled():
                     logger.error("Rotation control lost before app start")
                     continue
 
-                # Close existing instance if running
                 self.device.app_stop(self.isoclipboard_package)
                 time.sleep(1)
-
-                # Start app using activity manager
                 self.device.shell(
                     f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top'
                 )
                 time.sleep(3)
 
-                # Verify rotation is still disabled
                 if not self._verify_rotation_disabled():
                     logger.error("Rotation got enabled during app start")
                     continue
 
-                # Multiple verification attempts for foreground status
                 for _ in range(3):
                     current_app = self.device.app_current()
                     if current_app.get('package') == self.isoclipboard_package:
@@ -497,14 +470,13 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
         return False
 
     def _handle_fetch_operation(self) -> bool:
-        """Handle the FETCH button operation with rotation control."""
         try:
-            # Verify rotation before fetch
             if not self._verify_rotation_disabled():
                 return False
 
-            # Click FETCH button
-            fetch_button = self.device.xpath('//*[@resource-id="com.example.isolatedclipboard:id/buttonFetchUrl2"]')
+            fetch_button = self.device.xpath(
+                '//*[@resource-id="com.example.isolatedclipboard:id/buttonFetchUrl2"]'
+            )
             if not fetch_button.exists:
                 logger.error("FETCH button not found")
                 return False
@@ -513,7 +485,6 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             logger.info("Clicked FETCH button")
             time.sleep(15)
 
-            # Verify internet connection
             if not self.check_internet_connection():
                 logger.error("No internet connection available")
                 return False
@@ -524,14 +495,13 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def _handle_shuffle_and_miniplayer(self) -> bool:
-        """Handle shuffle and miniplayer with rotation control."""
         try:
-            # Verify rotation is still disabled
             if not self._verify_rotation_disabled():
                 return False
 
-            # Click shuffle button
-            shuffle_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/button_shuffle"]')
+            shuffle_button = self.device.xpath(
+                '//*[@resource-id="com.apple.android.music:id/button_shuffle"]'
+            )
             if not shuffle_button.exists:
                 logger.error("Shuffle button not found")
                 return False
@@ -540,7 +510,6 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             logger.info("Clicked shuffle button")
             time.sleep(3)
 
-            # Try multiple miniplayer selectors with rotation checks
             miniplayer_selectors = [
                 '//*[@resource-id="com.apple.android.music:id/miniplayer_shareplay_container"]',
                 '//*[@resource-id="com.apple.android.music:id/mini_player"]',
@@ -548,13 +517,12 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             ]
 
             for selector in miniplayer_selectors:
-                # Verify rotation before each attempt
                 if not self._verify_rotation_disabled():
                     continue
 
-                miniplayer = self.device.xpath(selector)
-                if miniplayer.exists:
-                    miniplayer.click()
+                mini = self.device.xpath(selector)
+                if mini.exists:
+                    mini.click()
                     logger.info(f"Clicked miniplayer using selector: {selector}")
                     time.sleep(1)
                     return True
