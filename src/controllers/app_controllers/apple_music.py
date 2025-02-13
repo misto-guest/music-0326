@@ -123,30 +123,28 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 logger.error("Failed to ensure screen active before action.")
                 return False
 
-            # First, check the current foreground app via uiautomator2
             current_app_info = self.device.app_current()
             current_package = current_app_info.get("package", "")
             logger.info(f"Current active package: {current_package}")
 
-            expected_ids = ["com.apple.android.music", ".amcKGERRbgaxjBBPED"]
-
+            # Define a helper that returns True if the text indicates Apple Music is running.
             def is_apple_music_active(text: str) -> bool:
-                for identifier in expected_ids:
-                    if identifier in text:
-                        return True
-                return False
+                return "com.apple.android.music" in text or ".amcKGERRbgaxjBBPED" in text
 
             if not is_apple_music_active(current_package):
                 logger.info("Apple Music not detected in foreground via app_current(). Checking recents...")
-                recents = self.device.shell("dumpsys activity recents | grep 'Recent #' | grep 'type=standard'")
-                logger.info(f"Recents output: {recents}")
-                if not is_apple_music_active(recents):
+                recents_response = self.device.shell(
+                    "dumpsys activity recents | grep 'Recent #' | grep -i '.amcKGERRbgaxjBBPED'")
+                recents_output = recents_response.output.strip() if hasattr(recents_response,
+                                                                            "output") else recents_response.strip()
+                logger.info(f"Recents output: {recents_output}")
+
+                if not is_apple_music_active(recents_output):
                     logger.info("Apple Music is not running according to recents. Attempting to bring it forward.")
                 else:
                     logger.info(
-                        "Apple Music is found in recents, but not active. Attempting to bring it to foreground.")
+                        "Apple Music is found in recents, but not active. Attempting to bring it to the foreground.")
 
-                # Use the reorder flag to bring Apple Music to the foreground.
                 command = (
                     "am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "
                     "-n com.apple.android.music/.onboarding.activities.SplashActivity -f 0x2000000"
