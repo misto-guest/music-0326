@@ -232,6 +232,9 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             play_button.click()
             logger.info("Clicked play/pause button")
             time.sleep(1)
+
+            self._ensure_mini_player()
+
             return True
         except Exception as e:
             logger.error(f"Error toggling play/pause: {e}")
@@ -263,6 +266,9 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             next_button.click()
             logger.info("Clicked next track button")
             time.sleep(2)
+
+            self._ensure_mini_player()
+
             return True
         except Exception as e:
             logger.error(f"Error skipping to next track: {e}")
@@ -294,6 +300,9 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             prev_button.click()
             logger.info("Clicked previous track button")
             time.sleep(2)
+
+            self._ensure_mini_player()
+
             return True
         except Exception as e:
             logger.error(f"Error going to previous track: {e}")
@@ -322,6 +331,9 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             like_button.click()
             logger.info("Clicked like button")
             time.sleep(2)
+
+            self._ensure_mini_player()
+
             return True
         except Exception as e:
             logger.error(f"Error liking current song: {e}")
@@ -532,3 +544,14 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
         except Exception as e:
             logger.error(f"Error handling shuffle and miniplayer: {e}")
             return False
+
+    def _ensure_mini_player(self):
+        """Ensure the mini_player element is clicked to correct state."""
+        try:
+            mini_player = self.device.xpath('//*[@resource-id="com.apple.android.music:id/mini_player"]')
+            if mini_player.exists:
+                mini_player.click()
+                logger.info("Clicked mini_player to ensure correct Apple Music state")
+                time.sleep(1)
+        except Exception as e:
+            logger.error(f"Error ensuring mini_player state: {e}")
