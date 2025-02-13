@@ -120,46 +120,40 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
     def prepare_for_action(self) -> bool:
         try:
             if not self.ensure_screen_active():
-                logger.error("Failed to ensure screen active before action.")
+                logger.error("Failed to ensure screen is active before action.")
                 return False
 
             current_app_info = self.device.app_current()
             current_package = current_app_info.get("package", "")
             logger.info(f"Current active package: {current_package}")
 
-            # Define a helper that returns True if the text indicates Apple Music is running.
             def is_apple_music_active(text: str) -> bool:
-                return "com.apple.android.music" in text or ".amcKGERRbgaxjBBPED" in text
+                return ("com.apple.android.music" in text) or (".amcKGERRbgaxjBBPED" in text)
 
             if not is_apple_music_active(current_package):
                 logger.info("Apple Music not detected in foreground via app_current(). Checking recents...")
                 recents_response = self.device.shell(
                     "dumpsys activity recents | grep 'Recent #' | grep -i '.amcKGERRbgaxjBBPED'")
-                recents_output = recents_response.output.strip() if hasattr(recents_response,
-                                                                            "output") else recents_response.strip()
-                logger.info(f"Recents output: {recents_output}")
+                recents_output = recents_response.output if hasattr(recents_response, "output") else recents_response
+                logger.info(f"Recents output: {recents_output.strip()}")
 
                 if not is_apple_music_active(recents_output):
-                    logger.info("Apple Music is not running according to recents. Attempting to bring it forward.")
+                    logger.info("Apple Music not running according to recents. Starting it normally.")
+                    return self.start_app()
                 else:
-                    logger.info(
-                        "Apple Music is found in recents, but not active. Attempting to bring it to the foreground.")
+                    logger.info("Apple Music found in recents. Bringing it to the foreground using monkey.")
 
-                command = (
-                    "am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "
-                    "-n com.apple.android.music/.onboarding.activities.SplashActivity -f 0x2000000"
-                )
+                command = "monkey -p com.apple.android.music -c android.intent.category.LAUNCHER 1"
                 logger.info(f"Executing command: {command}")
                 result = self.device.shell(command)
                 logger.info(f"Command result: {result}")
                 time.sleep(3)
 
-                # Re-check the active app.
                 current_app_info = self.device.app_current()
                 current_package = current_app_info.get("package", "")
-                logger.info(f"After command, current active package: {current_package}")
+                logger.info(f"After monkey command, current active package: {current_package}")
                 if not is_apple_music_active(current_package):
-                    logger.error("Apple Music is still not in the foreground after the command.")
+                    logger.error("Apple Music is still not in the foreground after the monkey command.")
                     return False
                 else:
                     logger.info("Apple Music has been successfully brought to the foreground.")
@@ -178,10 +172,15 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 time.sleep(1)
                 return True
             else:
-                # Press home first, then start app
-                self.device.press('home')
-                time.sleep(1)
-                return self.start_app()
+                if self.is_running():
+                    command = (
+                        "monkey -p com.apple.android.music -c android.intent.category.LAUNCHER 1"
+                    )
+                    self.device.shell(command)
+                    time.sleep(3)
+                    return True
+                else:
+                    return self.start_app()
         except Exception as e:
             logger.error(f"Failed to manage window state: {e}")
             return False
@@ -218,7 +217,16 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
 
     def is_running(self) -> bool:
         try:
-            return bool(self.device(packageName=self.package_name).exists)
+            # Check if any UI element with the Apple Music package exists.
+            if self.device(packageName=self.package_name).exists:
+                return True
+
+            # Optionally, check the recents output for the internal alias.
+            recents = self.device.shell("dumpsys activity recents | grep -i '.amcKGERRbgaxjBBPED'")
+            if recents and ".amcKGERRbgaxjBBPED" in recents.output:
+                return True
+
+            return False
         except Exception as e:
             logger.error(f"Error checking if Apple Music is running: {e}")
             return False
