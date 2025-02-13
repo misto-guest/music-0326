@@ -104,7 +104,9 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
         """Check internet connection using netstat."""
         for attempt in range(max_retries):
             try:
-                netstat_check = self.device.shell('netstat -n | grep ESTABLISHED | grep -E "^tcp6.*::ffff:|^tcp[^6]"')
+                netstat_check = self.device.shell(
+                    'netstat -n | grep ESTABLISHED | grep -E "^tcp6.*::ffff:|^tcp[^6]"'
+                )
                 if getattr(netstat_check, 'exit_code', 0) != 0:
                     logger.warning(f"Failed to get TCP connections (attempt {attempt + 1}/{max_retries})")
                     time.sleep(delay)
@@ -125,20 +127,20 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
         return False
 
     def prepare_for_action(self) -> bool:
-        """Prepare device for performing an action."""
         try:
             if not self.ensure_screen_active():
                 logger.error("Failed to ensure screen active before action")
                 return False
 
-            # Clear any pending restart flags
             if self.needs_restart("Apple Music"):
                 logger.info("Restarting Apple Music after force-close")
                 self.clear_restart_flag("Apple Music")
                 time.sleep(2)
 
-            # Bring app to foreground
-            self.manage_window_state(minimize=False)
+            if not self.manage_window_state(minimize=False):
+                logger.error("Failed to bring Apple Music to foreground")
+                return False
+
             time.sleep(1)
 
             if not self.is_running():
@@ -151,15 +153,15 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def manage_window_state(self, minimize: bool = True) -> bool:
-        """Manage Apple Music window state."""
         try:
             if minimize:
                 self.device.press('home')
                 time.sleep(1)
+                return True
             else:
-                self.device.app_start(self.package_name)
+                self.device.press('home')
                 time.sleep(1)
-            return True
+                return self.start_app()
         except Exception as e:
             logger.error(f"Failed to manage window state: {e}")
             return False
@@ -167,9 +169,16 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
     def start_app(self) -> bool:
         """Start Apple Music app."""
         try:
+            logger.info("Starting Apple Music via app_start()")
             self.device.app_start(self.package_name)
             time.sleep(2)
-            return self.is_running()
+            # Check if running
+            if self.is_running():
+                logger.info("Apple Music is now in the foreground")
+                return True
+            else:
+                logger.error("Apple Music did not appear in foreground after start attempt")
+                return False
         except Exception as e:
             logger.error(f"Error starting Apple Music: {e}")
             return False
@@ -189,7 +198,6 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def is_running(self) -> bool:
-        """Check if Apple Music is running."""
         try:
             return bool(self.device(packageName=self.package_name).exists)
         except Exception as e:
@@ -211,23 +219,25 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
         try:
             logger.info("Attempting play/pause...")
 
+            # Ensure app is foreground:
             if not self.prepare_for_action():
                 if self.needs_restart("Apple Music"):
                     logger.info("Retrying after force-close")
                     self.clear_restart_flag("Apple Music")
                     time.sleep(2)
                     if not self.prepare_for_action():
-                        logger.info("Using keyevent fallback")
+                        # Fallback: keyevent
+                        logger.info("Using keyevent fallback for play/pause")
                         self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
                         return True
                 else:
-                    logger.info("Using keyevent fallback")
+                    logger.info("Using keyevent fallback for play/pause")
                     self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
                     return True
 
             play_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/play_pause"]')
             if not play_button.exists:
-                logger.info("Play button not found, using keyevent")
+                logger.info("Play button not found, using keyevent fallback")
                 self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
                 time.sleep(1)
                 return True
@@ -251,9 +261,16 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
         try:
             logger.info("Attempting next track...")
 
+            # Ensure app is foreground:
+            if not self.prepare_for_action():
+                logger.info("Using keyevent fallback for next track")
+                self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
+                time.sleep(2)
+                return True
+
             next_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/next_fast_forward"]')
             if not next_button.exists:
-                logger.info("Next button not found, using keyevent")
+                logger.info("Next button not found, using keyevent fallback")
                 self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
                 time.sleep(2)
                 return True
@@ -277,9 +294,16 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
         try:
             logger.info("Attempting previous track...")
 
+            # Ensure app is foreground:
+            if not self.prepare_for_action():
+                logger.info("Using keyevent fallback for previous track")
+                self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
+                time.sleep(2)
+                return True
+
             prev_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/previous_rewind"]')
             if not prev_button.exists:
-                logger.info("Previous button not found, using keyevent")
+                logger.info("Previous button not found, using keyevent fallback")
                 self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
                 time.sleep(2)
                 return True
@@ -302,6 +326,11 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
         """Like the currently playing song."""
         try:
             logger.info("Starting like song action...")
+
+            # Ensure app is foreground:
+            if not self.prepare_for_action():
+                logger.error("Cannot like song, app wasn't prepared/foregrounded.")
+                return False
 
             like_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/list_favorite_icon"]')
             if not like_button.exists:
