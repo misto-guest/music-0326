@@ -40,6 +40,54 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
         except Exception as e:
             logger.error(f"Error in cleanup: {e}")
 
+    def check_play_state(self) -> bool:
+        """Check if Apple Music is currently playing using logcat."""
+        try:
+            # Wait for logs to be updated
+            time.sleep(5)
+
+            # Use logcat to check play state
+            cmd = "logcat -d | grep 'com.apple.android.music.*isPlaying=' | tail -n 1 | awk -F'isPlaying=' '{print $2}' | cut -d',' -f1"
+            result = self.device.shell(cmd)
+
+            # Convert result to string and clean it
+            state = str(result.output if hasattr(result, 'output') else result).strip().lower()
+            logger.info(f"Apple Music play state from logcat: {state}")
+
+            return state == "true"
+        except Exception as e:
+            logger.error(f"Error checking play state from logcat: {e}")
+            return False
+
+    def ensure_playing(self) -> bool:
+        """Ensure music is playing using media controls."""
+        try:
+            if not self.prepare_for_action():
+                logger.error("Could not prepare for play state check")
+                return False
+
+            # Check if we need to play
+            if not self.check_play_state():
+                logger.info("Music is not playing, sending play command")
+                self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
+
+                # Give more time for the play state to update in logs
+                time.sleep(8)
+
+                # Verify play state after action
+                if not self.check_play_state():
+                    logger.error("Failed to start playback")
+                    return False
+
+                logger.info("Successfully started playback")
+            else:
+                logger.info("Music is already playing")
+
+            return True
+        except Exception as e:
+            logger.error(f"Error ensuring playing state: {e}")
+            return False
+
     def setup_screen_settings(self) -> bool:
         try:
             logger.info("Setting up screen settings")
@@ -300,20 +348,30 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                     self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
                     return True
 
-            play_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/play_pause"]')
-            if not play_button.exists:
-                logger.info("Play button not found, using keyevent fallback")
-                self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
+            # First ensure mini player is visible
+            mini_player = self.device.xpath('//*[@resource-id="com.apple.android.music:id/mini_player"]')
+            if mini_player.exists:
+                mini_player.click()
+                logger.info("Clicked mini player")
                 time.sleep(1)
-                return True
 
-            play_button.click()
-            logger.info("Clicked play/pause button")
+            # Try to find specific play/pause buttons
+            play_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/mini_player_play_btn"]')
+            pause_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/mini_player_pause_btn"]')
+
+            if play_button.exists:
+                play_button.click()
+                logger.info("Clicked play button")
+            elif pause_button.exists:
+                pause_button.click()
+                logger.info("Clicked pause button")
+            else:
+                logger.info("Play/pause buttons not found, using keyevent fallback")
+                self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
+
             time.sleep(1)
-
-            self._ensure_mini_player()
-
             return True
+
         except Exception as e:
             logger.error(f"Error toggling play/pause: {e}")
             try:
@@ -334,6 +392,10 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 time.sleep(2)
                 self._ensure_mini_player()
                 return True
+
+            # First ensure app is playing
+            if not self.ensure_playing():
+                logger.warning("Could not ensure playing state before next track")
 
             # Add a 5-second wait before checking for the button
             time.sleep(5)
@@ -370,21 +432,28 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 logger.info("Using keyevent fallback for previous track")
                 self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
                 time.sleep(2)
+                self._ensure_mini_player()
                 return True
+
+            # First ensure app is playing
+            if not self.ensure_playing():
+                logger.warning("Could not ensure playing state before previous track")
+
+            # Add a wait before checking for the button
+            time.sleep(5)
 
             prev_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/previous_rewind"]')
             if not prev_button.exists:
                 logger.info("Previous button not found, using keyevent fallback")
                 self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
                 time.sleep(2)
+                self._ensure_mini_player()
                 return True
 
             prev_button.click()
             logger.info("Clicked previous track button")
             time.sleep(2)
-
             self._ensure_mini_player()
-
             return True
         except Exception as e:
             logger.error(f"Error going to previous track: {e}")
@@ -392,6 +461,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
                 logger.info("Sent previous track keyevent after error")
                 time.sleep(2)
+                self._ensure_mini_player()
                 return True
             except:
                 return False
@@ -400,11 +470,18 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
         try:
             logger.info("Starting like song action...")
 
-            # Bring Apple Music to the foreground if needed:
             if not self.prepare_for_action():
                 logger.error("Cannot like song, app wasn't prepared/foregrounded.")
                 return False
 
+            if not self.ensure_playing():
+                logger.warning("Could not ensure playing state before liking song")
+                # Continue anyway as we might still be able to like
+
+            # Wait for UI to settle and logs to update
+            time.sleep(5)
+
+            # Try to find and click the like button
             like_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/list_favorite_icon"]')
             if not like_button.exists:
                 logger.error("Like button not found")
