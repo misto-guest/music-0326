@@ -127,6 +127,12 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             current_package = current_app_info.get("package", "")
             logger.info(f"Current active package: {current_package}")
 
+            # Force stop IsoClipboard if it's in foreground
+            if current_package == self.isoclipboard_package:
+                logger.info("Force stopping IsoClipboard")
+                self.device.app_stop(self.isoclipboard_package)
+                time.sleep(2)
+
             def is_apple_music_active(text: str) -> bool:
                 return ("com.apple.android.music" in text) or (".amcKGERRbgaxjBBPED" in text)
 
@@ -137,30 +143,65 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 recents_output = recents_response.output if hasattr(recents_response, "output") else recents_response
                 logger.info(f"Recents output: {recents_output.strip()}")
 
+                # Press HOME first to ensure clean state
+                logger.info("Pressing HOME key to ensure clean state")
+                self.device.press('home')
+                time.sleep(1)
+
                 if not is_apple_music_active(recents_output):
                     logger.info("Apple Music not running according to recents. Starting it normally.")
-                    return self.start_app()
+                    # Try am start first
+                    try:
+                        start_command = f'am start -n {self.package_name}/com.apple.android.music.activities.MainActivity'
+                        logger.info(f"Executing am start command: {start_command}")
+                        self.device.shell(start_command)
+                        time.sleep(3)
+                    except Exception as e:
+                        logger.error(f"am start failed: {e}")
+                        return self.start_app()
                 else:
-                    logger.info("Apple Music found in recents. Bringing it to the foreground using monkey.")
+                    logger.info("Apple Music found in recents. Trying multiple launch methods.")
 
-                command = "monkey -p com.apple.android.music -c android.intent.category.LAUNCHER 1"
-                logger.info(f"Executing command: {command}")
-                result = self.device.shell(command)
-                logger.info(f"Command result: {result}")
-                time.sleep(3)
+                    # Try monkey command first
+                    command = "monkey -p com.apple.android.music -c android.intent.category.LAUNCHER 1"
+                    logger.info(f"Executing monkey command: {command}")
+                    result = self.device.shell(command)
+                    logger.info(f"Monkey command result: {result}")
+                    time.sleep(3)
 
+                    # Check if monkey command worked
+                    current_app_info = self.device.app_current()
+                    current_package = current_app_info.get("package", "")
+
+                    if not is_apple_music_active(current_package):
+                        logger.info("Monkey command failed, trying am start...")
+                        try:
+                            start_command = f'am start -n {self.package_name}/com.apple.android.music.activities.MainActivity'
+                            logger.info(f"Executing am start command: {start_command}")
+                            self.device.shell(start_command)
+                            time.sleep(3)
+                        except Exception as e:
+                            logger.error(f"am start failed: {e}")
+                            return self.start_app()
+
+                # Final check
                 current_app_info = self.device.app_current()
                 current_package = current_app_info.get("package", "")
-                logger.info(f"After monkey command, current active package: {current_package}")
+                logger.info(f"Final check - current active package: {current_package}")
+
                 if not is_apple_music_active(current_package):
-                    logger.error("Apple Music is still not in the foreground after the monkey command.")
-                    return False
+                    logger.error("All attempts to bring Apple Music to foreground failed.")
+                    # One last attempt using app_start
+                    return self.start_app()
                 else:
                     logger.info("Apple Music has been successfully brought to the foreground.")
             else:
                 logger.info("Apple Music is already in the foreground.")
 
+            # Wait for UI to settle
+            time.sleep(2)
             return True
+
         except Exception as e:
             logger.error(f"Error preparing for action: {e}")
             return False
