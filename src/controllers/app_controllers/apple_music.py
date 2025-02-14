@@ -684,3 +684,11 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 logger.info("mini_player element not found")
         except Exception as e:
             logger.error(f"Error ensuring mini_player state: {e}")
+
+    def _is_element_clickable(self, element) -> bool:
+        """Check if element exists and is clickable."""
+        try:
+            return element.exists and element.info.get('clickable', False)
+        except Exception as e:
+            logger.error(f"Error checking element clickability: {e}")
+            return False
