@@ -361,9 +361,11 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
 
             self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
             time.sleep(1)
+            self._ensure_mini_player()
             return True
         except Exception as e:
             logger.error(f"Error toggling play/pause: {e}")
+            self._ensure_mini_player()
             return False
 
     def next_track(self) -> bool:
@@ -371,30 +373,35 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             logger.info("Attempting next track...")
 
             if not self.prepare_app_and_play():
-                logger.info("Using keyevent fallback for next track")
+                logger.info("Preparation failed, using keyevent fallback for next track")
                 self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
                 time.sleep(2)
+                self._ensure_mini_player()
                 return True
 
             time.sleep(2)
             next_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/next_fast_forward"]')
-            if not next_button.exists:
-                logger.info("Next button not found, using keyevent fallback")
-                self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
-                time.sleep(2)
-                return True
 
-            next_button.click()
-            logger.info("Clicked next track button")
+            if self._is_element_clickable(next_button):
+                next_button.click()
+                logger.info("Clicked next track button")
+            else:
+                logger.info("Next button not clickable, using keyevent fallback")
+                self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
+
             time.sleep(2)
+            self._ensure_mini_player()
             return True
+
         except Exception as e:
             logger.error(f"Error skipping to next track: {e}")
             try:
                 self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
                 time.sleep(2)
+                self._ensure_mini_player()
                 return True
             except:
+                self._ensure_mini_player()
                 return False
 
     def previous_track(self) -> bool:
@@ -402,30 +409,35 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             logger.info("Attempting previous track...")
 
             if not self.prepare_app_and_play():
-                logger.info("Using keyevent fallback for previous track")
+                logger.info("Preparation failed, using keyevent fallback for previous track")
                 self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
                 time.sleep(2)
+                self._ensure_mini_player()
                 return True
 
             time.sleep(2)
             prev_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/previous_rewind"]')
-            if not prev_button.exists:
-                logger.info("Previous button not found, using keyevent fallback")
-                self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
-                time.sleep(2)
-                return True
 
-            prev_button.click()
-            logger.info("Clicked previous track button")
+            if self._is_element_clickable(prev_button):
+                prev_button.click()
+                logger.info("Clicked previous track button")
+            else:
+                logger.info("Previous button not clickable, using keyevent fallback")
+                self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
+
             time.sleep(2)
+            self._ensure_mini_player()
             return True
+
         except Exception as e:
             logger.error(f"Error going to previous track: {e}")
             try:
                 self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
                 time.sleep(2)
+                self._ensure_mini_player()
                 return True
             except:
+                self._ensure_mini_player()
                 return False
 
     def like_current_song(self) -> bool:
@@ -434,20 +446,24 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
 
             if not self.prepare_app_and_play():
                 logger.error("Cannot like song, app preparation failed")
+                self._ensure_mini_player()
                 return False
 
             like_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/list_favorite_icon"]')
-            if not like_button.exists:
-                logger.error("Like button not found")
+
+            if not self._is_element_clickable(like_button):
+                logger.error("Like button not clickable")
+                self._ensure_mini_player()
                 return False
 
             like_button.click()
             logger.info("Clicked like button")
             time.sleep(2)
-
+            self._ensure_mini_player()
             return True
         except Exception as e:
             logger.error(f"Error liking current song: {e}")
+            self._ensure_mini_player()
             return False
 
     def get_rotation_settings(self) -> Dict[str, str]:
