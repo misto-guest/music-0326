@@ -314,27 +314,24 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def prepare_for_action(self) -> bool:
-        """Prepare for action with improved app state handling."""
+        """Streamlined preparation for actions."""
         try:
             if not self.ensure_screen_active():
                 logger.error("Failed to ensure screen active before action")
                 return False
 
-            # Clear any pending restart flags
+            if self._verify_app_running():
+                return True
+
             if self.needs_restart("Amazon Music"):
                 logger.info("Restarting Amazon Music after force-close")
                 self.clear_restart_flag("Amazon Music")
-                time.sleep(3)
-
-            if self._verify_app_running():
-                logger.info("Amazon Music already running")
-                return True
+                time.sleep(1)
 
             if not self.start_app():
-                logger.error("Failed to start Amazon Music")
                 return False
 
-            time.sleep(3)
+            time.sleep(1)
             return self._verify_app_running()
 
         except Exception as e:
@@ -490,7 +487,7 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def _verify_app_running(self) -> bool:
-        """Verify Amazon Music is running with multiple checks."""
+        """Optimized verification of Amazon Music running state."""
         try:
             if self.device(packageName=self.package_name).exists:
                 logger.info("Found Amazon Music UI elements")
@@ -501,17 +498,10 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
                 logger.info("Amazon Music is current app")
                 return True
 
-            running_apps = self.device.shell('dumpsys activity activities | grep -i "mResumedActivity"')
-            if self.package_name in running_apps:
+            if self.package_name in self.device.shell('dumpsys activity activities | grep -i "mResumedActivity"'):
                 logger.info("Amazon Music found in resumed activities")
                 return True
 
-            processes = self.device.shell(f'ps | grep {self.package_name}')
-            if self.package_name in processes:
-                logger.info("Amazon Music process found")
-                return True
-
-            logger.error("Could not verify Amazon Music is running")
             return False
         except Exception as e:
             logger.error(f"Error verifying app state: {e}")
@@ -532,7 +522,7 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def start_app(self) -> bool:
-        """Start Amazon Music app with improved verification."""
+        """Start Amazon Music app with optimized timing."""
         initial_state = None
         try:
             logger.info("Starting Amazon Music...")
@@ -542,36 +532,35 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
             if not self._force_disable_rotation():
                 return False
 
-            # Try multiple start methods
-            start_methods = [
-                # Method 1: Activity Manager with main activity
-                lambda: self.device.shell(
-                    f'am start -W -n {self.package_name}/com.amazon.mp3.activity.MainActivity --activity-single-top'
-                ),
-                # Method 2: Activity Manager with launcher
-                lambda: self.device.shell(
-                    f'am start -W -n {self.package_name}/com.amazon.mp3.activity.MusicActivity --activity-single-top'
-                ),
-                # Method 3: Monkey command
-                lambda: self.device.shell(
-                    f'monkey -p {self.package_name} -c android.intent.category.LAUNCHER 1'
-                )
-            ]
+            logger.info("Attempting start with monkey command...")
+            self.device.shell(
+                f'monkey -p {self.package_name} -c android.intent.category.LAUNCHER 1'
+            )
+            time.sleep(2)
 
-            for start_method in start_methods:
-                try:
-                    start_method()
-                    time.sleep(5)  # Give more time for app to start
+            # Quick check
+            if self._verify_app_running():
+                logger.info("Amazon Music started successfully with monkey command")
+                return True
 
-                    if self._verify_app_running():
-                        logger.info("Amazon Music started successfully")
-                        return True
-                except Exception as e:
-                    logger.warning(f"Start method failed: {e}")
-                    continue
+            # Fallback to activity manager if monkey fails
+            logger.info("Monkey command failed, trying activity manager...")
+            self.device.shell(
+                f'am start -W -n {self.package_name}/com.amazon.mp3.activity.MainActivity --activity-single-top'
+            )
+            time.sleep(2)
 
-            logger.error("All start methods failed")
-            return False
+            # One retry with shorter interval
+            if not self._verify_app_running():
+                time.sleep(1)
+                if self._verify_app_running():
+                    logger.info("Amazon Music started successfully after retry")
+                    return True
+                logger.error("Failed to start Amazon Music")
+                return False
+
+            logger.info("Amazon Music started successfully")
+            return True
 
         except Exception as e:
             logger.error(f"Error starting Amazon Music: {e}")
