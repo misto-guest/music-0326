@@ -87,7 +87,6 @@ class MultiMusicAutomation(MutexMixin):
         return seconds
 
     def _youtube_loop(self):
-        """Thread loop for YouTube Music with pause support."""
         while self.running and self.youtube_controller:
             try:
                 if self.paused:
@@ -108,20 +107,9 @@ class MultiMusicAutomation(MutexMixin):
                     delay = self.get_isoclipboard_delay("youtube")
                     self.next_iso_youtube = time.time() + delay
 
-                # Check pause state again before long delay
-                if self.paused:
-                    continue
-
                 # 2) Wait random time, do random music action
                 action_delay = self.get_music_action_delay("youtube")
-                for _ in range(action_delay):
-                    if self.paused:
-                        break
-                    time.sleep(1)
-
-                # Skip action if paused
-                if self.paused:
-                    continue
+                time.sleep(action_delay)
 
                 # 3) Perform random action (like/next/prev)
                 action, action_name = self.get_youtube_action()
@@ -135,7 +123,6 @@ class MultiMusicAutomation(MutexMixin):
                 time.sleep(60)
 
     def _apple_loop(self):
-        """Thread loop for Apple Music with pause support."""
         while self.running and self.apple_controller:
             try:
                 if self.paused:
@@ -155,20 +142,9 @@ class MultiMusicAutomation(MutexMixin):
                     delay = self.get_isoclipboard_delay("apple")
                     self.next_iso_apple = time.time() + delay
 
-                # Check pause state again before long delay
-                if self.paused:
-                    continue
-
                 # 2) Wait random time, do random music action
                 action_delay = self.get_music_action_delay("apple")
-                for _ in range(action_delay):
-                    if self.paused:
-                        break
-                    time.sleep(1)
-
-                # Skip action if paused
-                if self.paused:
-                    continue
+                time.sleep(action_delay)
 
                 # 3) Perform random action
                 action, action_name = self.get_apple_action()
@@ -182,7 +158,6 @@ class MultiMusicAutomation(MutexMixin):
                 time.sleep(60)
 
     def _amazon_loop(self):
-        """Thread loop for Amazon Music with pause support."""
         while self.running and self.amazon_controller:
             try:
                 if self.paused:
@@ -202,20 +177,9 @@ class MultiMusicAutomation(MutexMixin):
                     delay = self.get_isoclipboard_delay("amazon")
                     self.next_iso_amazon = time.time() + delay
 
-                # Check pause state again before long delay
-                if self.paused:
-                    continue
-
                 # 2) Wait random time, do random music action
                 action_delay = self.get_music_action_delay("amazon")
-                for _ in range(action_delay):
-                    if self.paused:
-                        break
-                    time.sleep(1)
-
-                # Skip action if paused
-                if self.paused:
-                    continue
+                time.sleep(action_delay)
 
                 # 3) Perform random action
                 action, action_name = self.get_amazon_action()
@@ -485,11 +449,9 @@ class MultiMusicAutomation(MutexMixin):
             if not self.running:
                 logger.warning("No automation is currently running")
                 return False
-
             if self.paused:
                 logger.warning("Automation is already paused")
                 return False
-
             logger.info("Pausing automation...")
             self.paused = True
             return True
@@ -503,11 +465,9 @@ class MultiMusicAutomation(MutexMixin):
             if not self.running:
                 logger.warning("No automation is currently running")
                 return False
-
             if not self.paused:
                 logger.warning("Automation is not paused")
                 return False
-
             logger.info("Resuming automation...")
             self.paused = False
             return True
