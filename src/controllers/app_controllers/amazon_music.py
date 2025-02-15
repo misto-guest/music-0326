@@ -314,10 +314,8 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def prepare_for_action(self) -> bool:
-        """Prepare device for performing an action with improved timing."""
+        """Prepare for action with improved app state handling."""
         try:
-            time.sleep(2)
-
             if not self.ensure_screen_active():
                 logger.error("Failed to ensure screen active before action")
                 return False
@@ -328,16 +326,17 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
                 self.clear_restart_flag("Amazon Music")
                 time.sleep(3)
 
-            # Bring app to foreground
-            self.start_app()
-            time.sleep(3)
+            if self._verify_app_running():
+                logger.info("Amazon Music already running")
+                return True
 
-            if not self.is_running():
-                logger.error("App not in foreground after preparation")
+            if not self.start_app():
+                logger.error("Failed to start Amazon Music")
                 return False
 
-            time.sleep(2)
-            return True
+            time.sleep(3)
+            return self._verify_app_running()
+
         except Exception as e:
             logger.error(f"Error preparing for action: {e}")
             return False
@@ -490,49 +489,33 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error liking current song: {e}")
             return False
 
-    def start_app(self) -> bool:
-        """Start Amazon Music app."""
+    def _verify_app_running(self) -> bool:
+        """Verify Amazon Music is running with multiple checks."""
         try:
-            logger.info("Starting Amazon Music...")
-            initial_state = self.get_rotation_settings()
+            if self.device(packageName=self.package_name).exists:
+                logger.info("Found Amazon Music UI elements")
+                return True
 
-            # Force disable rotation first
-            if not self._force_disable_rotation():
-                return False
-
-            # Start app using activity manager for more reliable launch
-            self.device.shell(
-                f'am start -W {self.package_name}/com.amazon.mp3.activity.MainActivity --activity-single-top'
-            )
-            time.sleep(3)
-
-            # Verify app is running
-            if not self.is_running():
-                logger.error("Failed to verify Amazon Music is running")
-                return False
-
-            # Verify app is in foreground
             current_app = self.device.app_current()
-            if current_app.get('package') != self.package_name:
-                logger.error("Amazon Music is not in foreground")
-                # Try to bring to foreground
-                self.device.app_start(self.package_name)
-                time.sleep(2)
+            if current_app.get('package') == self.package_name:
+                logger.info("Amazon Music is current app")
+                return True
 
-                # Check again
-                current_app = self.device.app_current()
-                if current_app.get('package') != self.package_name:
-                    return False
+            running_apps = self.device.shell('dumpsys activity activities | grep -i "mResumedActivity"')
+            if self.package_name in running_apps:
+                logger.info("Amazon Music found in resumed activities")
+                return True
 
-            logger.info("Amazon Music started successfully")
-            return True
+            processes = self.device.shell(f'ps | grep {self.package_name}')
+            if self.package_name in processes:
+                logger.info("Amazon Music process found")
+                return True
 
-        except Exception as e:
-            logger.error(f"Error starting Amazon Music: {e}")
+            logger.error("Could not verify Amazon Music is running")
             return False
-        finally:
-            # Restore original rotation state
-            self._restore_rotation_state(initial_state)
+        except Exception as e:
+            logger.error(f"Error verifying app state: {e}")
+            return False
 
     def stop_app(self) -> bool:
         """Stop Amazon Music app."""
@@ -548,10 +531,59 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error stopping Amazon Music: {e}")
             return False
 
-    def is_running(self) -> bool:
-        """Check if Amazon Music is running."""
+    def start_app(self) -> bool:
+        """Start Amazon Music app with improved verification."""
+        initial_state = None
         try:
-            return bool(self.device(packageName=self.package_name).exists)
+            logger.info("Starting Amazon Music...")
+            initial_state = self.get_rotation_settings()
+
+            # Force disable rotation first
+            if not self._force_disable_rotation():
+                return False
+
+            # Try multiple start methods
+            start_methods = [
+                # Method 1: Activity Manager with main activity
+                lambda: self.device.shell(
+                    f'am start -W -n {self.package_name}/com.amazon.mp3.activity.MainActivity --activity-single-top'
+                ),
+                # Method 2: Activity Manager with launcher
+                lambda: self.device.shell(
+                    f'am start -W -n {self.package_name}/com.amazon.mp3.activity.MusicActivity --activity-single-top'
+                ),
+                # Method 3: Monkey command
+                lambda: self.device.shell(
+                    f'monkey -p {self.package_name} -c android.intent.category.LAUNCHER 1'
+                )
+            ]
+
+            for start_method in start_methods:
+                try:
+                    start_method()
+                    time.sleep(5)  # Give more time for app to start
+
+                    if self._verify_app_running():
+                        logger.info("Amazon Music started successfully")
+                        return True
+                except Exception as e:
+                    logger.warning(f"Start method failed: {e}")
+                    continue
+
+            logger.error("All start methods failed")
+            return False
+
+        except Exception as e:
+            logger.error(f"Error starting Amazon Music: {e}")
+            return False
+        finally:
+            if initial_state:
+                self._restore_rotation_state(initial_state)
+
+    def is_running(self) -> bool:
+        """Check if Amazon Music is running with improved detection."""
+        try:
+            return self._verify_app_running()
         except Exception as e:
             logger.error(f"Error checking if Amazon Music is running: {e}")
             return False
