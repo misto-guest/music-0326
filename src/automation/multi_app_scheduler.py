@@ -86,6 +86,25 @@ class MultiMusicAutomation(MutexMixin):
             logger.info(f"Next {app_name} action in {seconds}s (at {next_time})")
         return seconds
 
+    @with_device_lock
+    def _check_safe_to_act(self) -> bool:
+        """Check if enough time has passed since last action."""
+        now = time.time()
+        last_actions = []
+
+        if self.youtube_controller:
+            last_actions.append(self.last_youtube_action)
+        if self.apple_controller:
+            last_actions.append(self.last_apple_action)
+        if self.amazon_controller:
+            last_actions.append(self.last_amazon_action)
+
+        if last_actions:
+            most_recent = max(last_actions)
+            return (now - most_recent) >= 10  # Ensure 10 second gap between any actions
+
+        return True
+
     def _youtube_loop(self):
         while self.running and self.youtube_controller:
             try:
@@ -95,27 +114,20 @@ class MultiMusicAutomation(MutexMixin):
 
                 # 1) IsoClipboard check
                 now = time.time()
-                if now >= self.next_iso_youtube and not self.paused:
-                    logger.info("Performing YouTube Music IsoClipboard")
-                    success = self._run_locked(self.youtube_controller.handle_isoclipboard)
-                    if success:
-                        self._run_locked(self.youtube_controller.device.press, "home")
-                        logger.info("YouTube Music IsoClipboard successful")
-                    delay = self.get_isoclipboard_delay("youtube")
-                    self.next_iso_youtube = time.time() + delay
+                if now >= self.next_iso_youtube:
+                    if self._check_safe_to_act():
+                        logger.info("Performing YouTube Music IsoClipboard")
+                        success = self._run_locked(self.youtube_controller.handle_isoclipboard)
+                        if success:
+                            self._run_locked(self.youtube_controller.device.press, "home")
+                            logger.info("YouTube Music IsoClipboard successful")
+                        delay = self.get_isoclipboard_delay("youtube")
+                        self.next_iso_youtube = time.time() + delay
 
                 action_delay = self.get_music_action_delay("youtube")
-                end_time = time.time() + action_delay
+                time.sleep(action_delay)
 
-                while time.time() < end_time:
-                    if self.paused:
-                        break
-                    time.sleep(1)
-
-                if self.paused:
-                    continue
-
-                if not self.paused:
+                if not self.paused and self._check_safe_to_act():
                     action, action_name = self.get_youtube_action()
                     if self._run_locked(action):
                         self.last_youtube_action = time.time()
@@ -135,27 +147,20 @@ class MultiMusicAutomation(MutexMixin):
 
                 # 1) IsoClipboard check
                 now = time.time()
-                if now >= self.next_iso_apple and not self.paused:
-                    logger.info("Performing Apple Music IsoClipboard")
-                    success = self._run_locked(self.apple_controller.handle_isoclipboard)
-                    if success:
-                        self._run_locked(self.apple_controller.device.press, "home")
-                        logger.info("Apple Music IsoClipboard successful")
-                    delay = self.get_isoclipboard_delay("apple")
-                    self.next_iso_apple = time.time() + delay
+                if now >= self.next_iso_apple:
+                    if self._check_safe_to_act():
+                        logger.info("Performing Apple Music IsoClipboard")
+                        success = self._run_locked(self.apple_controller.handle_isoclipboard)
+                        if success:
+                            self._run_locked(self.apple_controller.device.press, "home")
+                            logger.info("Apple Music IsoClipboard successful")
+                        delay = self.get_isoclipboard_delay("apple")
+                        self.next_iso_apple = time.time() + delay
 
                 action_delay = self.get_music_action_delay("apple")
-                end_time = time.time() + action_delay
+                time.sleep(action_delay)
 
-                while time.time() < end_time:
-                    if self.paused:
-                        break
-                    time.sleep(1)
-
-                if self.paused:
-                    continue
-
-                if not self.paused:
+                if not self.paused and self._check_safe_to_act():
                     action, action_name = self.get_apple_action()
                     if self._run_locked(action):
                         self.last_apple_action = time.time()
@@ -175,27 +180,20 @@ class MultiMusicAutomation(MutexMixin):
 
                 # 1) IsoClipboard check
                 now = time.time()
-                if now >= self.next_iso_amazon and not self.paused:
-                    logger.info("Performing Amazon Music IsoClipboard")
-                    success = self._run_locked(self.amazon_controller.handle_isoclipboard)
-                    if success:
-                        self._run_locked(self.amazon_controller.device.press, "home")
-                        logger.info("Amazon Music IsoClipboard successful")
-                    delay = self.get_isoclipboard_delay("amazon")
-                    self.next_iso_amazon = time.time() + delay
+                if now >= self.next_iso_amazon:
+                    if self._check_safe_to_act():
+                        logger.info("Performing Amazon Music IsoClipboard")
+                        success = self._run_locked(self.amazon_controller.handle_isoclipboard)
+                        if success:
+                            self._run_locked(self.amazon_controller.device.press, "home")
+                            logger.info("Amazon Music IsoClipboard successful")
+                        delay = self.get_isoclipboard_delay("amazon")
+                        self.next_iso_amazon = time.time() + delay
 
                 action_delay = self.get_music_action_delay("amazon")
-                end_time = time.time() + action_delay
+                time.sleep(action_delay)
 
-                while time.time() < end_time:
-                    if self.paused:
-                        break
-                    time.sleep(1)
-
-                if self.paused:
-                    continue
-
-                if not self.paused:
+                if not self.paused and self._check_safe_to_act():
                     action, action_name = self.get_amazon_action()
                     if self._run_locked(action):
                         self.last_amazon_action = time.time()
