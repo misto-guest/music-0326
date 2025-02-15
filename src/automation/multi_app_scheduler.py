@@ -314,24 +314,31 @@ class MultiMusicAutomation(MutexMixin):
         if self.youtube_controller:
             if not self._youtube_initial_setup():
                 return False
+
         if self.apple_controller:
             if not self._apple_initial_setup():
                 return False
+
         if self.amazon_controller:
             if not self._amazon_initial_setup():
                 return False
 
+        now = time.time()
+
         # Mark running
         self.running = True
 
-        # Initialize next iso times so each loop doesn't do iso-clipboard instantly
-        now = time.time()
         if self.youtube_controller:
             self.next_iso_youtube = now + self.get_isoclipboard_delay("youtube")
+            self.last_youtube_action = now
+
         if self.apple_controller:
             self.next_iso_apple = now + self.get_isoclipboard_delay("apple")
+            self.last_apple_action = now
+
         if self.amazon_controller:
             self.next_iso_amazon = now + self.get_isoclipboard_delay("amazon")
+            self.last_amazon_action = now
 
         # Launch separate threads for each active controller
         if self.youtube_controller:
@@ -397,7 +404,9 @@ class MultiMusicAutomation(MutexMixin):
                 return False
 
             self.running = True
-            self.next_iso_youtube = time.time() + self.get_isoclipboard_delay("youtube")
+            now = time.time()
+            self.next_iso_youtube = now + self.get_isoclipboard_delay("youtube")
+            self.last_youtube_action = now
 
             self.youtube_thread = threading.Thread(target=self._youtube_loop, daemon=True)
             self.youtube_thread.start()
@@ -420,7 +429,9 @@ class MultiMusicAutomation(MutexMixin):
                 return False
 
             self.running = True
-            self.next_iso_apple = time.time() + self.get_isoclipboard_delay("apple")
+            now = time.time()
+            self.next_iso_apple = now + self.get_isoclipboard_delay("apple")
+            self.last_apple_action = now
 
             self.apple_thread = threading.Thread(target=self._apple_loop, daemon=True)
             self.apple_thread.start()
@@ -443,7 +454,9 @@ class MultiMusicAutomation(MutexMixin):
                 return False
 
             self.running = True
-            self.next_iso_amazon = time.time() + self.get_isoclipboard_delay("amazon")
+            now = time.time()
+            self.next_iso_amazon = now + self.get_isoclipboard_delay("amazon")
+            self.last_amazon_action = now
 
             self.amazon_thread = threading.Thread(target=self._amazon_loop, daemon=True)
             self.amazon_thread.start()
