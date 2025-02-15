@@ -109,11 +109,12 @@ class MultiMusicAutomation(MutexMixin):
         while self.running and self.youtube_controller:
             try:
                 if self.paused:
-                    time.sleep(1)
+                    time.sleep(300)
                     continue
 
-                # 1) IsoClipboard check
                 now = time.time()
+                delay = None
+
                 if now >= self.next_iso_youtube:
                     if self._check_safe_to_act():
                         logger.info("Performing YouTube Music IsoClipboard")
@@ -124,15 +125,16 @@ class MultiMusicAutomation(MutexMixin):
                         delay = self.get_isoclipboard_delay("youtube")
                         self.next_iso_youtube = time.time() + delay
 
-                action_delay = self.get_music_action_delay("youtube")
-                time.sleep(action_delay)
-
                 if not self.paused and self._check_safe_to_act():
                     action, action_name = self.get_youtube_action()
                     if self._run_locked(action):
                         self.last_youtube_action = time.time()
                         self._run_locked(self.youtube_controller.device.press, "home")
                         logger.info(f"YouTube Music {action_name} successful")
+
+                if delay is None:
+                    delay = self.get_music_action_delay("youtube")
+                time.sleep(delay)
 
             except Exception as e:
                 logger.error(f"Error in YouTube loop: {e}")
@@ -142,11 +144,12 @@ class MultiMusicAutomation(MutexMixin):
         while self.running and self.apple_controller:
             try:
                 if self.paused:
-                    time.sleep(1)
+                    time.sleep(300)
                     continue
 
-                # 1) IsoClipboard check
                 now = time.time()
+                delay = None
+
                 if now >= self.next_iso_apple:
                     if self._check_safe_to_act():
                         logger.info("Performing Apple Music IsoClipboard")
@@ -157,15 +160,16 @@ class MultiMusicAutomation(MutexMixin):
                         delay = self.get_isoclipboard_delay("apple")
                         self.next_iso_apple = time.time() + delay
 
-                action_delay = self.get_music_action_delay("apple")
-                time.sleep(action_delay)
-
                 if not self.paused and self._check_safe_to_act():
                     action, action_name = self.get_apple_action()
                     if self._run_locked(action):
                         self.last_apple_action = time.time()
                         self._run_locked(self.apple_controller.device.press, "home")
                         logger.info(f"Apple Music {action_name} successful")
+
+                if delay is None:
+                    delay = self.get_music_action_delay("apple")
+                time.sleep(delay)
 
             except Exception as e:
                 logger.error(f"Error in Apple loop: {e}")
@@ -175,11 +179,12 @@ class MultiMusicAutomation(MutexMixin):
         while self.running and self.amazon_controller:
             try:
                 if self.paused:
-                    time.sleep(1)
+                    time.sleep(300)
                     continue
 
-                # 1) IsoClipboard check
                 now = time.time()
+                delay = None
+
                 if now >= self.next_iso_amazon:
                     if self._check_safe_to_act():
                         logger.info("Performing Amazon Music IsoClipboard")
@@ -190,9 +195,6 @@ class MultiMusicAutomation(MutexMixin):
                         delay = self.get_isoclipboard_delay("amazon")
                         self.next_iso_amazon = time.time() + delay
 
-                action_delay = self.get_music_action_delay("amazon")
-                time.sleep(action_delay)
-
                 if not self.paused and self._check_safe_to_act():
                     action, action_name = self.get_amazon_action()
                     if self._run_locked(action):
@@ -200,10 +202,13 @@ class MultiMusicAutomation(MutexMixin):
                         self._run_locked(self.amazon_controller.device.press, "home")
                         logger.info(f"Amazon Music {action_name} successful")
 
+                if delay is None:
+                    delay = self.get_music_action_delay("amazon")
+                time.sleep(delay)
+
             except Exception as e:
                 logger.error(f"Error in Amazon loop: {e}")
                 time.sleep(60)
-
 
     def get_youtube_action(self) -> Tuple[Callable, str]:
         actions = [
