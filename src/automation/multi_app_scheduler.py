@@ -367,3 +367,72 @@ class MultiMusicAutomation(MutexMixin):
         self.last_amazon_action = 0
 
         logger.info("Automation stopped successfully.")
+
+    def start_youtube_only(self) -> bool:
+        """Start automation for YouTube Music only."""
+        try:
+            if not self.youtube_controller:
+                logger.error("No YouTube Music controller available")
+                return False
+
+            if not self._youtube_initial_setup():
+                return False
+
+            self.running = True
+            self.next_iso_youtube = time.time() + self.get_isoclipboard_delay("youtube")
+
+            self.youtube_thread = threading.Thread(target=self._youtube_loop, daemon=True)
+            self.youtube_thread.start()
+            logger.info("YouTube Music automation thread started")
+
+            return True
+        except Exception as e:
+            logger.error(f"Error starting YouTube Music automation: {e}")
+            self.running = False
+            return False
+
+    def start_apple_only(self) -> bool:
+        """Start automation for Apple Music only."""
+        try:
+            if not self.apple_controller:
+                logger.error("No Apple Music controller available")
+                return False
+
+            if not self._apple_initial_setup():
+                return False
+
+            self.running = True
+            self.next_iso_apple = time.time() + self.get_isoclipboard_delay("apple")
+
+            self.apple_thread = threading.Thread(target=self._apple_loop, daemon=True)
+            self.apple_thread.start()
+            logger.info("Apple Music automation thread started")
+
+            return True
+        except Exception as e:
+            logger.error(f"Error starting Apple Music automation: {e}")
+            self.running = False
+            return False
+
+    def start_amazon_only(self) -> bool:
+        """Start automation for Amazon Music only."""
+        try:
+            if not self.amazon_controller:
+                logger.error("No Amazon Music controller available")
+                return False
+
+            if not self._amazon_initial_setup():
+                return False
+
+            self.running = True
+            self.next_iso_amazon = time.time() + self.get_isoclipboard_delay("amazon")
+
+            self.amazon_thread = threading.Thread(target=self._amazon_loop, daemon=True)
+            self.amazon_thread.start()
+            logger.info("Amazon Music automation thread started")
+
+            return True
+        except Exception as e:
+            logger.error(f"Error starting Amazon Music automation: {e}")
+            self.running = False
+            return False
