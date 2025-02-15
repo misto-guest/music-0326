@@ -40,6 +40,75 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
         except Exception as e:
             logger.error(f"Error in cleanup: {e}")
 
+    def check_play_state(self) -> bool:
+        """Check if Apple Music is currently playing using logcat."""
+        try:
+            # Wait for logs to be updated
+            time.sleep(5)
+
+            # Use logcat to check play state
+            cmd = "logcat -d | grep 'com.apple.android.music.*isPlaying=' | tail -n 1 | awk -F'isPlaying=' '{print $2}' | cut -d',' -f1"
+            result = self.device.shell(cmd)
+
+            # Convert result to string and clean it
+            state = str(result.output if hasattr(result, 'output') else result).strip().lower()
+            logger.info(f"Apple Music play state from logcat: {state}")
+
+            return state == "true"
+        except Exception as e:
+            logger.error(f"Error checking play state from logcat: {e}")
+            return False
+
+    def ensure_playing(self) -> bool:
+        """Ensure music is playing using media controls."""
+        try:
+            if not self.prepare_for_action():
+                logger.error("Could not prepare for play state check")
+                return False
+
+            # Check if we need to play
+            if not self.check_play_state():
+                logger.info("Music is not playing, sending play command")
+                self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
+
+                # Give more time for the play state to update in logs
+                time.sleep(8)
+
+                # Verify play state after action
+                if not self.check_play_state():
+                    logger.error("Failed to start playback")
+                    return False
+
+                logger.info("Successfully started playback")
+            else:
+                logger.info("Music is already playing")
+
+            return True
+        except Exception as e:
+            logger.error(f"Error ensuring playing state: {e}")
+            return False
+
+    def prepare_app_and_play(self) -> bool:
+        """Consolidated method to prepare app and ensure it's playing."""
+        try:
+            if not self.prepare_for_action():
+                logger.error("Could not prepare app for action")
+                return False
+
+            # Now check play state and handle if needed
+            if not self.check_play_state():
+                logger.info("Music is not playing, sending play command")
+                self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
+                time.sleep(7)  # Wait for play state to update
+
+                # Final check
+                return self.check_play_state()
+
+            return True
+        except Exception as e:
+            logger.error(f"Error in prepare_app_and_play: {e}")
+            return False
+
     def setup_screen_settings(self) -> bool:
         try:
             logger.info("Setting up screen settings")
@@ -127,6 +196,12 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             current_package = current_app_info.get("package", "")
             logger.info(f"Current active package: {current_package}")
 
+            # Force stop IsoClipboard if it's in foreground
+            if current_package == self.isoclipboard_package:
+                logger.info("Force stopping IsoClipboard")
+                self.device.app_stop(self.isoclipboard_package)
+                time.sleep(2)
+
             def is_apple_music_active(text: str) -> bool:
                 return ("com.apple.android.music" in text) or (".amcKGERRbgaxjBBPED" in text)
 
@@ -137,30 +212,65 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 recents_output = recents_response.output if hasattr(recents_response, "output") else recents_response
                 logger.info(f"Recents output: {recents_output.strip()}")
 
+                # Press HOME first to ensure clean state
+                logger.info("Pressing HOME key to ensure clean state")
+                self.device.press('home')
+                time.sleep(1)
+
                 if not is_apple_music_active(recents_output):
                     logger.info("Apple Music not running according to recents. Starting it normally.")
-                    return self.start_app()
+                    # Try am start first
+                    try:
+                        start_command = f'am start -n {self.package_name}/com.apple.android.music.activities.MainActivity'
+                        logger.info(f"Executing am start command: {start_command}")
+                        self.device.shell(start_command)
+                        time.sleep(3)
+                    except Exception as e:
+                        logger.error(f"am start failed: {e}")
+                        return self.start_app()
                 else:
-                    logger.info("Apple Music found in recents. Bringing it to the foreground using monkey.")
+                    logger.info("Apple Music found in recents. Trying multiple launch methods.")
 
-                command = "monkey -p com.apple.android.music -c android.intent.category.LAUNCHER 1"
-                logger.info(f"Executing command: {command}")
-                result = self.device.shell(command)
-                logger.info(f"Command result: {result}")
-                time.sleep(3)
+                    # Try monkey command first
+                    command = "monkey -p com.apple.android.music -c android.intent.category.LAUNCHER 1"
+                    logger.info(f"Executing monkey command: {command}")
+                    result = self.device.shell(command)
+                    logger.info(f"Monkey command result: {result}")
+                    time.sleep(3)
 
+                    # Check if monkey command worked
+                    current_app_info = self.device.app_current()
+                    current_package = current_app_info.get("package", "")
+
+                    if not is_apple_music_active(current_package):
+                        logger.info("Monkey command failed, trying am start...")
+                        try:
+                            start_command = f'am start -n {self.package_name}/com.apple.android.music.activities.MainActivity'
+                            logger.info(f"Executing am start command: {start_command}")
+                            self.device.shell(start_command)
+                            time.sleep(3)
+                        except Exception as e:
+                            logger.error(f"am start failed: {e}")
+                            return self.start_app()
+
+                # Final check
                 current_app_info = self.device.app_current()
                 current_package = current_app_info.get("package", "")
-                logger.info(f"After monkey command, current active package: {current_package}")
+                logger.info(f"Final check - current active package: {current_package}")
+
                 if not is_apple_music_active(current_package):
-                    logger.error("Apple Music is still not in the foreground after the monkey command.")
-                    return False
+                    logger.error("All attempts to bring Apple Music to foreground failed.")
+                    # One last attempt using app_start
+                    return self.start_app()
                 else:
                     logger.info("Apple Music has been successfully brought to the foreground.")
             else:
                 logger.info("Apple Music is already in the foreground.")
 
+            # Wait for UI to settle
+            time.sleep(2)
             return True
+
         except Exception as e:
             logger.error(f"Error preparing for action: {e}")
             return False
@@ -244,140 +354,116 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
     def play_pause(self) -> bool:
         try:
             logger.info("Attempting play/pause...")
-
             if not self.prepare_for_action():
-                if self.needs_restart("Apple Music"):
-                    logger.info("Retrying after force-close")
-                    self.clear_restart_flag("Apple Music")
-                    time.sleep(2)
-                    if not self.prepare_for_action():
-                        logger.info("Using keyevent fallback for play/pause")
-                        self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
-                        return True
-                else:
-                    logger.info("Using keyevent fallback for play/pause")
-                    self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
-                    return True
-
-            play_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/play_pause"]')
-            if not play_button.exists:
-                logger.info("Play button not found, using keyevent fallback")
+                logger.info("Using keyevent fallback for play/pause")
                 self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
-                time.sleep(1)
                 return True
 
-            play_button.click()
-            logger.info("Clicked play/pause button")
+            self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
             time.sleep(1)
-
             self._ensure_mini_player()
-
             return True
         except Exception as e:
             logger.error(f"Error toggling play/pause: {e}")
-            try:
-                self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
-                logger.info("Sent play/pause keyevent after error")
-                time.sleep(1)
-                return True
-            except:
-                return False
+            self._ensure_mini_player()
+            return False
 
     def next_track(self) -> bool:
         try:
             logger.info("Attempting next track...")
 
-            if not self.prepare_for_action():
-                logger.info("Using keyevent fallback for next track")
+            if not self.prepare_app_and_play():
+                logger.info("Preparation failed, using keyevent fallback for next track")
                 self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
                 time.sleep(2)
                 self._ensure_mini_player()
                 return True
 
-            # Add a 5-second wait before checking for the button
-            time.sleep(5)
-
+            time.sleep(2)
             next_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/next_fast_forward"]')
-            if not next_button.exists:
-                logger.info("Next button not found, using keyevent fallback")
-                self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
-                time.sleep(2)
-                self._ensure_mini_player()
-                return True
 
-            next_button.click()
-            logger.info("Clicked next track button")
+            if self._is_element_clickable(next_button):
+                next_button.click()
+                logger.info("Clicked next track button")
+            else:
+                logger.info("Next button not clickable, using keyevent fallback")
+                self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
+
             time.sleep(2)
             self._ensure_mini_player()
             return True
+
         except Exception as e:
             logger.error(f"Error skipping to next track: {e}")
             try:
                 self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
-                logger.info("Sent next track keyevent after error")
                 time.sleep(2)
                 self._ensure_mini_player()
                 return True
             except:
+                self._ensure_mini_player()
                 return False
 
     def previous_track(self) -> bool:
         try:
             logger.info("Attempting previous track...")
 
-            if not self.prepare_for_action():
-                logger.info("Using keyevent fallback for previous track")
+            if not self.prepare_app_and_play():
+                logger.info("Preparation failed, using keyevent fallback for previous track")
                 self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
                 time.sleep(2)
+                self._ensure_mini_player()
                 return True
 
-            prev_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/previous_rewind"]')
-            if not prev_button.exists:
-                logger.info("Previous button not found, using keyevent fallback")
-                self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
-                time.sleep(2)
-                return True
-
-            prev_button.click()
-            logger.info("Clicked previous track button")
             time.sleep(2)
+            prev_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/previous_rewind"]')
 
+            if self._is_element_clickable(prev_button):
+                prev_button.click()
+                logger.info("Clicked previous track button")
+            else:
+                logger.info("Previous button not clickable, using keyevent fallback")
+                self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
+
+            time.sleep(2)
             self._ensure_mini_player()
-
             return True
+
         except Exception as e:
             logger.error(f"Error going to previous track: {e}")
             try:
                 self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
-                logger.info("Sent previous track keyevent after error")
                 time.sleep(2)
+                self._ensure_mini_player()
                 return True
             except:
+                self._ensure_mini_player()
                 return False
 
     def like_current_song(self) -> bool:
         try:
             logger.info("Starting like song action...")
 
-            # Bring Apple Music to the foreground if needed:
-            if not self.prepare_for_action():
-                logger.error("Cannot like song, app wasn't prepared/foregrounded.")
+            if not self.prepare_app_and_play():
+                logger.error("Cannot like song, app preparation failed")
+                self._ensure_mini_player()
                 return False
 
             like_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/list_favorite_icon"]')
-            if not like_button.exists:
-                logger.error("Like button not found")
+
+            if not self._is_element_clickable(like_button):
+                logger.error("Like button not clickable")
+                self._ensure_mini_player()
                 return False
 
             like_button.click()
             logger.info("Clicked like button")
             time.sleep(2)
-
             self._ensure_mini_player()
-
             return True
         except Exception as e:
             logger.error(f"Error liking current song: {e}")
+            self._ensure_mini_player()
             return False
 
     def get_rotation_settings(self) -> Dict[str, str]:
@@ -595,6 +681,14 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 logger.info("Clicked mini_player to ensure correct Apple Music state")
                 time.sleep(1)
             else:
-                logger.info("mini_player element not found.")
+                logger.info("mini_player element not found")
         except Exception as e:
             logger.error(f"Error ensuring mini_player state: {e}")
+
+    def _is_element_clickable(self, element) -> bool:
+        """Check if element exists and is clickable."""
+        try:
+            return element.exists and element.info.get('clickable', False)
+        except Exception as e:
+            logger.error(f"Error checking element clickability: {e}")
+            return False
