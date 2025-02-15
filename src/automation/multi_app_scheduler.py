@@ -51,40 +51,40 @@ class MultiMusicAutomation(MutexMixin):
     def get_isoclipboard_delay(self, app_type: str) -> int:
         if app_type == "youtube":
             minutes = random.randint(22, 33)
+            seconds = random.randint(0, 59)
             app_name = "YouTube Music"
         elif app_type == "apple":
             minutes = random.randint(25, 35)
+            seconds = random.randint(0, 59)
             app_name = "Apple Music"
         else:
             minutes = random.randint(27, 37)
+            seconds = random.randint(0, 59)
             app_name = "Amazon Music"
 
-        seconds = minutes * 60
-        next_time = time.strftime('%H:%M:%S', time.localtime(time.time() + seconds))
-        logger.info(f"Next {app_name} IsoClipboard action in {minutes}m (at {next_time})")
+        total_seconds = minutes * 60 + seconds
+        next_time = time.strftime('%H:%M:%S', time.localtime(time.time() + total_seconds))
+        logger.info(f"Next {app_name} IsoClipboard action in {minutes}m {seconds}s (at {next_time})")
         return seconds
 
     def get_music_action_delay(self, app_type: str) -> int:
-
         if app_type == "youtube":
-            seconds = random.randint(45, 6 * 60)
+            minutes = random.randint(0, 6)
+            seconds = random.randint(45, 59) if minutes == 0 else random.randint(0, 59)
             app_name = "YouTube Music"
         elif app_type == "apple":
-            seconds = random.randint(60, 7 * 60)
+            minutes = random.randint(1, 7)
+            seconds = random.randint(42, 59) if minutes == 0 else random.randint(0, 59)
             app_name = "Apple Music"
         else:
-            seconds = random.randint(50, 5 * 60)
+            minutes = random.randint(0, 5)
+            seconds = random.randint(50, 59) if minutes == 0 else random.randint(0, 59)
             app_name = "Amazon Music"
 
-        m = seconds // 60
-        s = seconds % 60
-        next_time = time.strftime('%H:%M:%S', time.localtime(time.time() + seconds))
-
-        if m:
-            logger.info(f"Next {app_name} action in {m}m {s}s (at {next_time})")
-        else:
-            logger.info(f"Next {app_name} action in {seconds}s (at {next_time})")
-        return seconds
+        total_seconds = minutes * 60 + seconds
+        next_time = time.strftime('%H:%M:%S', time.localtime(time.time() + total_seconds))
+        logger.info(f"Next {app_name} action in {minutes}m {seconds}s (at {next_time})")
+        return total_seconds
 
     @with_device_lock
     def _check_safe_to_act(self) -> bool:
