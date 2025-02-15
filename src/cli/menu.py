@@ -1,5 +1,6 @@
 # src/cli/menu.py
 
+import sys
 import time
 from typing import Dict, Callable, Optional
 from src.controllers.device_controller import DeviceController
@@ -293,7 +294,11 @@ class CLI:
             logger.error(f"Error showing automation status: {e}")
             return False
 
-    def display_menu(self):
+    def display_menu(self, show_help: bool = False):
+        if not show_help:
+            print("\nEnter command (use --help or -h to show all commands): ")
+            return
+
         print("\nYouTube Music Controls:")
         for key, (description, _) in self.commands.items():
             if key.startswith('y'):
@@ -319,6 +324,33 @@ class CLI:
             if not key.startswith(('y', 'a', 'm', 's')):
                 print(f"{key} - {description}")
 
+    def run(self):
+        """Run the main CLI loop."""
+        logger.info(f"Running CLI for device: {self.device_id}")
+
+        while True:
+            try:
+                self.display_menu(show_help='--help' in sys.argv)
+                command = input("\nEnter command: ").lower().strip()
+
+                if command in ['--help', '-h']:
+                    self.display_menu(show_help=True)
+                    continue
+
+                if not self.handle_command(command):
+                    logger.info("Exiting...")
+                    break
+
+                time.sleep(0.5)
+
+            except KeyboardInterrupt:
+                logger.info("\nReceived keyboard interrupt, exiting...")
+                self.stop_automation()
+                break
+            except Exception as e:
+                logger.error(f"Error in CLI loop: {e}")
+                continue
+
     def handle_command(self, command: str) -> bool:
         if command not in self.commands:
             logger.warning(f"Unknown command: {command}")
@@ -337,25 +369,6 @@ class CLI:
         except Exception as e:
             logger.error(f"Error executing {description}: {e}")
             return True
-
-    def run(self):
-        """Run the main CLI loop."""
-        logger.info(f"Running CLI for device: {self.device_id}")
-        while True:
-            try:
-                self.display_menu()
-                command = input("\nEnter command: ").lower().strip()
-                if not self.handle_command(command):
-                    logger.info("Exiting...")
-                    break
-                time.sleep(0.5)
-            except KeyboardInterrupt:
-                logger.info("\nReceived keyboard interrupt, exiting...")
-                self.stop_automation()
-                break
-            except Exception as e:
-                logger.error(f"Error in CLI loop: {e}")
-                continue
 
     def pause_automation(self) -> bool:
         """Pause the current automation."""
