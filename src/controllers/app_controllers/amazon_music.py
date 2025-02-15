@@ -1,7 +1,7 @@
 # src/controllers/app_controllers/amazon_music.py
 
 import time
-from typing import Optional, Dict
+from typing import Dict
 import uiautomator2 as u2
 from src.controllers.base_controller import BaseController
 from src.controllers.mixins.popup_monitor import PopupMonitorMixin

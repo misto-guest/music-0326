@@ -59,7 +59,6 @@ class CLI:
             'm5': ('Amazon Music: Like Current Song',
                    lambda: self.controller.app_controllers['amazon_music'].like_current_song()),
 
-            # Multi-App Automation Commands
             'sy': ('Start YouTube Music Only', self.start_youtube_automation),
             'sa': ('Start Apple Music Only', self.start_apple_automation),
             'sm': ('Start Amazon Music Only', self.start_amazon_automation),
@@ -68,6 +67,8 @@ class CLI:
             'sam': ('Start Apple & Amazon Music', self.start_apple_amazon_automation),
             'sall': ('Start All Apps', self.start_all_automation),
             'stop': ('Stop Automation', self.stop_automation),
+            'pause': ('Pause Automation', self.pause_automation),
+            'resume': ('Resume Automation', self.resume_automation),
             'status': ('Show Automation Status', self.show_automation_status),
 
             # General Commands
@@ -242,40 +243,47 @@ class CLI:
             return False
 
     def show_automation_status(self) -> bool:
-        """Show current automation status."""
+        """Show current automation status including pause state."""
         try:
             if self.automation:
-                status = "Running" if self.automation.running else "Stopped"
+                if not self.automation.running:
+                    status = "Stopped"
+                elif self.automation.paused:
+                    status = "Paused"
+                else:
+                    status = "Running"
+
                 logger.info(f"Automation status: {status}")
+
                 if self.automation.running:
-                    # Check which controllers are active
                     active_apps = []
+
                     if self.automation.youtube_controller:
                         yt_last = time.strftime('%H:%M:%S',
                                                 time.localtime(self.automation.last_youtube_action))
                         yt_iso = time.strftime('%H:%M:%S',
-                                               time.localtime(self.automation.last_youtube_isoclipboard))
+                                               time.localtime(self.automation.next_iso_youtube))
                         active_apps.append("YouTube Music")
                         logger.info(f"Last YouTube Music action: {yt_last}")
-                        logger.info(f"Last YouTube Music IsoClipboard: {yt_iso}")
+                        logger.info(f"Next YouTube Music IsoClipboard: {yt_iso}")
 
                     if self.automation.apple_controller:
                         am_last = time.strftime('%H:%M:%S',
                                                 time.localtime(self.automation.last_apple_action))
                         am_iso = time.strftime('%H:%M:%S',
-                                               time.localtime(self.automation.last_apple_isoclipboard))
+                                               time.localtime(self.automation.next_iso_apple))
                         active_apps.append("Apple Music")
                         logger.info(f"Last Apple Music action: {am_last}")
-                        logger.info(f"Last Apple Music IsoClipboard: {am_iso}")
+                        logger.info(f"Next Apple Music IsoClipboard: {am_iso}")
 
                     if self.automation.amazon_controller:
                         amz_last = time.strftime('%H:%M:%S',
                                                  time.localtime(self.automation.last_amazon_action))
                         amz_iso = time.strftime('%H:%M:%S',
-                                                time.localtime(self.automation.last_amazon_isoclipboard))
+                                                time.localtime(self.automation.next_iso_amazon))
                         active_apps.append("Amazon Music")
                         logger.info(f"Last Amazon Music action: {amz_last}")
-                        logger.info(f"Last Amazon Music IsoClipboard: {amz_iso}")
+                        logger.info(f"Next Amazon Music IsoClipboard: {amz_iso}")
 
                     logger.info(f"Active apps: {', '.join(active_apps)}")
             else:
@@ -303,7 +311,7 @@ class CLI:
 
         print("\nAutomation Controls:")
         for key, (description, _) in self.commands.items():
-            if key in ['sy', 'sa', 'sm', 'sya', 'sym', 'sam', 'sall', 'stop', 'status']:
+            if key in ['sy', 'sa', 'sm', 'sya', 'sym', 'sam', 'sall', 'stop', 'pause', 'resume', 'status']:
                 print(f"{key} - {description}")
 
         print("\nGeneral Commands:")
@@ -348,3 +356,49 @@ class CLI:
             except Exception as e:
                 logger.error(f"Error in CLI loop: {e}")
                 continue
+
+    def pause_automation(self) -> bool:
+        """Pause the current automation."""
+        try:
+            if not self.automation:
+                logger.warning("No automation is currently initialized")
+                return False
+
+            if not self.automation.running:
+                logger.warning("No automation is currently running")
+                return False
+
+            if self.automation.paused:
+                logger.warning("Automation is already paused")
+                return False
+
+            success = self.automation.pause_automation()
+            if success:
+                logger.info("Automation paused successfully")
+            return success
+        except Exception as e:
+            logger.error(f"Failed to pause automation: {e}")
+            return False
+
+    def resume_automation(self) -> bool:
+        """Resume the paused automation."""
+        try:
+            if not self.automation:
+                logger.warning("No automation is currently initialized")
+                return False
+
+            if not self.automation.running:
+                logger.warning("No automation is currently running")
+                return False
+
+            if not self.automation.paused:
+                logger.warning("Automation is not paused")
+                return False
+
+            success = self.automation.resume_automation()
+            if success:
+                logger.info("Automation resumed successfully")
+            return success
+        except Exception as e:
+            logger.error(f"Failed to resume automation: {e}")
+            return False

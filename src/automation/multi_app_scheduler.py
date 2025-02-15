@@ -27,6 +27,7 @@ class MultiMusicAutomation(MutexMixin):
         self.amazon_controller = amazon_controller
 
         self.running = False
+        self.paused = False
 
         # We will store one thread per active app
         self.youtube_thread: Optional[threading.Thread] = None
@@ -86,9 +87,13 @@ class MultiMusicAutomation(MutexMixin):
         return seconds
 
     def _youtube_loop(self):
-
+        """Thread loop for YouTube Music with pause support."""
         while self.running and self.youtube_controller:
             try:
+                if self.paused:
+                    time.sleep(1)
+                    continue
+
                 # 1) IsoClipboard check
                 now = time.time()
                 if now >= self.next_iso_youtube:
@@ -103,9 +108,20 @@ class MultiMusicAutomation(MutexMixin):
                     delay = self.get_isoclipboard_delay("youtube")
                     self.next_iso_youtube = time.time() + delay
 
+                # Check pause state again before long delay
+                if self.paused:
+                    continue
+
                 # 2) Wait random time, do random music action
                 action_delay = self.get_music_action_delay("youtube")
-                time.sleep(action_delay)
+                for _ in range(action_delay):
+                    if self.paused:
+                        break
+                    time.sleep(1)
+
+                # Skip action if paused
+                if self.paused:
+                    continue
 
                 # 3) Perform random action (like/next/prev)
                 action, action_name = self.get_youtube_action()
@@ -119,11 +135,13 @@ class MultiMusicAutomation(MutexMixin):
                 time.sleep(60)
 
     def _apple_loop(self):
-        """
-        Thread loop for Apple Music:
-        """
+        """Thread loop for Apple Music with pause support."""
         while self.running and self.apple_controller:
             try:
+                if self.paused:
+                    time.sleep(1)
+                    continue
+
                 # 1) IsoClipboard check
                 now = time.time()
                 if now >= self.next_iso_apple:
@@ -137,9 +155,20 @@ class MultiMusicAutomation(MutexMixin):
                     delay = self.get_isoclipboard_delay("apple")
                     self.next_iso_apple = time.time() + delay
 
+                # Check pause state again before long delay
+                if self.paused:
+                    continue
+
                 # 2) Wait random time, do random music action
                 action_delay = self.get_music_action_delay("apple")
-                time.sleep(action_delay)
+                for _ in range(action_delay):
+                    if self.paused:
+                        break
+                    time.sleep(1)
+
+                # Skip action if paused
+                if self.paused:
+                    continue
 
                 # 3) Perform random action
                 action, action_name = self.get_apple_action()
@@ -153,11 +182,13 @@ class MultiMusicAutomation(MutexMixin):
                 time.sleep(60)
 
     def _amazon_loop(self):
-        """
-        Thread loop for Amazon Music:
-        """
+        """Thread loop for Amazon Music with pause support."""
         while self.running and self.amazon_controller:
             try:
+                if self.paused:
+                    time.sleep(1)
+                    continue
+
                 # 1) IsoClipboard check
                 now = time.time()
                 if now >= self.next_iso_amazon:
@@ -171,9 +202,20 @@ class MultiMusicAutomation(MutexMixin):
                     delay = self.get_isoclipboard_delay("amazon")
                     self.next_iso_amazon = time.time() + delay
 
+                # Check pause state again before long delay
+                if self.paused:
+                    continue
+
                 # 2) Wait random time, do random music action
                 action_delay = self.get_music_action_delay("amazon")
-                time.sleep(action_delay)
+                for _ in range(action_delay):
+                    if self.paused:
+                        break
+                    time.sleep(1)
+
+                # Skip action if paused
+                if self.paused:
+                    continue
 
                 # 3) Perform random action
                 action, action_name = self.get_amazon_action()
@@ -435,4 +477,40 @@ class MultiMusicAutomation(MutexMixin):
         except Exception as e:
             logger.error(f"Error starting Amazon Music automation: {e}")
             self.running = False
+            return False
+
+    def pause_automation(self) -> bool:
+        """Pause running automation."""
+        try:
+            if not self.running:
+                logger.warning("No automation is currently running")
+                return False
+
+            if self.paused:
+                logger.warning("Automation is already paused")
+                return False
+
+            logger.info("Pausing automation...")
+            self.paused = True
+            return True
+        except Exception as e:
+            logger.error(f"Error pausing automation: {e}")
+            return False
+
+    def resume_automation(self) -> bool:
+        """Resume paused automation."""
+        try:
+            if not self.running:
+                logger.warning("No automation is currently running")
+                return False
+
+            if not self.paused:
+                logger.warning("Automation is not paused")
+                return False
+
+            logger.info("Resuming automation...")
+            self.paused = False
+            return True
+        except Exception as e:
+            logger.error(f"Error resuming automation: {e}")
             return False
