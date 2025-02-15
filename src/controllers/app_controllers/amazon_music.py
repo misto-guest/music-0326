@@ -159,7 +159,6 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
                 logger.error("Failed to disable rotation")
                 return False
 
-            # Start IsoClipboard safely
             if not self._start_isoclipboard_safely():
                 if self.needs_restart("IsoClipboard"):
                     logger.info("Retrying IsoClipboard after force-close")
@@ -182,9 +181,11 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
                 if not self.prepare_for_action():
                     return False
 
-            # Handle shuffle and miniplayer
-            if not self._handle_shuffle_and_miniplayer():
+            if not self._handle_shuffle_and_play():
                 return False
+
+            self.device.press("home")
+            time.sleep(1)
 
             return True
         except Exception as e:
@@ -195,7 +196,7 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
                 self._restore_rotation_state(initial_rotation_state)
 
     def _start_isoclipboard_safely(self) -> bool:
-        """Start IsoClipboard app with safety checks."""
+        """Start IsoClipboard app with improved timing and safety checks."""
         max_attempts = 3
         for attempt in range(max_attempts):
             try:
@@ -208,46 +209,50 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
 
                 # Close existing instance if running
                 self.device.app_stop(self.isoclipboard_package)
-                time.sleep(1)
+                time.sleep(3)
 
                 # Start app using activity manager
                 self.device.shell(
                     f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top'
                 )
-                time.sleep(3)
+                time.sleep(5)  # Increased pause after starting app
 
                 # Verify rotation is still disabled
                 if not self._verify_rotation_disabled():
                     logger.error("Rotation got enabled during app start")
                     continue
 
-                # Verify foreground status
-                for _ in range(3):
+                for check in range(3):
                     current_app = self.device.app_current()
                     if current_app.get('package') == self.isoclipboard_package:
                         logger.info("IsoClipboard successfully brought to foreground")
+                        time.sleep(2)
                         return True
-                    logger.warning("IsoClipboard not in foreground, retrying...")
+
+                    logger.warning(f"IsoClipboard not in foreground (check {check + 1}/3), retrying...")
                     self.device.press("home")
-                    time.sleep(1)
+                    time.sleep(2)
+
                     self.device.shell(
                         f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top'
                     )
-                    time.sleep(2)
+                    time.sleep(3)
 
                 logger.error(f"Failed to bring IsoClipboard to foreground on attempt {attempt + 1}")
 
             except Exception as e:
                 logger.error(f"Error on attempt {attempt + 1}: {e}")
 
-            time.sleep(2)
+            time.sleep(3)
 
         logger.error("All attempts to start IsoClipboard safely failed")
         return False
 
     def _handle_fetch_operation(self) -> bool:
-        """Handle the FETCH button operation."""
+        """Handle the FETCH button operation with improved timing."""
         try:
+            time.sleep(3)
+
             # Verify rotation before fetch
             if not self._verify_rotation_disabled():
                 return False
@@ -257,9 +262,10 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
             fetch_button = self.device.xpath(fetch_xpath)
 
             if fetch_button.exists:
+                time.sleep(2)
                 fetch_button.click()
                 logger.info("Clicked FETCH AM button using XPath")
-                time.sleep(5)
+                time.sleep(8)
             else:
                 # Fallback to resourceId if XPath fails
                 fetch_button = self.device(resourceId="com.example.isolatedclipboard:id/buttonFetchUrl3")
@@ -267,28 +273,31 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
                     logger.error("FETCH AM button not found")
                     return False
 
+                time.sleep(2)
                 fetch_button.click()
                 logger.info("Clicked FETCH AM button using resourceId")
-                time.sleep(5)
+                time.sleep(8)
 
-            # Verify internet connection
-            if not self.check_internet_connection():
-                logger.error("No internet connection available")
-                return False
+            for attempt in range(3):
+                if self.check_internet_connection():
+                    return True
+                time.sleep(3)
 
-            return True
+            logger.error("No internet connection available after multiple attempts")
+            return False
         except Exception as e:
             logger.error(f"Error in fetch operation: {e}")
             return False
 
-    def _handle_shuffle_and_miniplayer(self) -> bool:
-        """Handle shuffle button and miniplayer interaction."""
+    def _handle_shuffle_and_play(self) -> bool:
+        """Handle shuffle button interaction."""
         try:
-            # Verify rotation is still disabled
             if not self._verify_rotation_disabled():
                 return False
 
-            # Click shuffle button
+            time.sleep(5)
+            logger.info("Looking for shuffle button...")
+
             shuffle_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/ShuffleButton"]')
             if not shuffle_button.exists:
                 logger.error("Shuffle button not found")
@@ -296,25 +305,19 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
 
             shuffle_button.click()
             logger.info("Clicked shuffle button")
-            time.sleep(3)
 
-            # Try to find and click the miniplayer
-            miniplayer = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/now_playing_bar"]')
-            if miniplayer.exists:
-                miniplayer.click()
-                logger.info("Clicked miniplayer")
-                time.sleep(1)
-                return True
+            time.sleep(5)
 
-            logger.error("Miniplayer not found")
-            return False
+            return True
         except Exception as e:
-            logger.error(f"Error handling shuffle and miniplayer: {e}")
+            logger.error(f"Error handling shuffle: {e}")
             return False
 
     def prepare_for_action(self) -> bool:
-        """Prepare device for performing an action."""
+        """Prepare device for performing an action with improved timing."""
         try:
+            time.sleep(2)
+
             if not self.ensure_screen_active():
                 logger.error("Failed to ensure screen active before action")
                 return False
@@ -323,16 +326,17 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
             if self.needs_restart("Amazon Music"):
                 logger.info("Restarting Amazon Music after force-close")
                 self.clear_restart_flag("Amazon Music")
-                time.sleep(2)
+                time.sleep(3)
 
             # Bring app to foreground
             self.start_app()
-            time.sleep(1)
+            time.sleep(3)
 
             if not self.is_running():
                 logger.error("App not in foreground after preparation")
                 return False
 
+            time.sleep(2)
             return True
         except Exception as e:
             logger.error(f"Error preparing for action: {e}")
@@ -357,7 +361,7 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
                     self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
                     return True
 
-            play_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/play_pause_button"]')
+            play_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/PersistentPlayerPlayButton"]')
             if not play_button.exists:
                 logger.info("Play button not found, using keyevent")
                 self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
@@ -397,7 +401,7 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
                     self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
                     return True
 
-            next_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/next_button"]')
+            next_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/PersistentPlayerNextButton"]')
             if not next_button.exists:
                 logger.info("Next button not found, using keyevent")
                 self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
@@ -437,7 +441,7 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
                     self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
                     return True
 
-            prev_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/previous_button"]')
+            prev_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/PersistentPlayerPrevButton"]')
             if not prev_button.exists:
                 logger.info("Previous button not found, using keyevent")
                 self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
@@ -473,8 +477,7 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
                 else:
                     return False
 
-            # Try to find the thumbs up button
-            like_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/thumbs_up_button"]')
+            like_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/StageLikeButtonWrapper"]')
             if not like_button.exists:
                 logger.error("Like button not found")
                 return False
@@ -561,4 +564,28 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
             return True
         except Exception as e:
             logger.error(f"Error force stopping Amazon Music: {e}")
+            return False
+
+    def manage_window_state(self, minimize: bool = True) -> bool:
+        """Manage Amazon Music window state."""
+        try:
+            if minimize:
+                logger.info("Minimizing Amazon Music window")
+                self.device.press("home")
+                time.sleep(1)
+                return True
+            else:
+                logger.info("Maximizing Amazon Music window")
+                if self.is_running():
+                    # Use monkey command for more reliable app switching
+                    command = (
+                        "monkey -p com.amazon.mp3 -c android.intent.category.LAUNCHER 1"
+                    )
+                    self.device.shell(command)
+                    time.sleep(3)
+                    return True
+                else:
+                    return self.start_app()
+        except Exception as e:
+            logger.error(f"Failed to manage window state: {e}")
             return False
