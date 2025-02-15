@@ -95,28 +95,32 @@ class MultiMusicAutomation(MutexMixin):
 
                 # 1) IsoClipboard check
                 now = time.time()
-                if now >= self.next_iso_youtube:
+                if now >= self.next_iso_youtube and not self.paused:
                     logger.info("Performing YouTube Music IsoClipboard")
                     success = self._run_locked(self.youtube_controller.handle_isoclipboard)
                     if success:
-                        # Press home
                         self._run_locked(self.youtube_controller.device.press, "home")
                         logger.info("YouTube Music IsoClipboard successful")
-
-                    # Schedule next iso-clipboard
                     delay = self.get_isoclipboard_delay("youtube")
                     self.next_iso_youtube = time.time() + delay
 
-                # 2) Wait random time, do random music action
                 action_delay = self.get_music_action_delay("youtube")
-                time.sleep(action_delay)
+                end_time = time.time() + action_delay
 
-                # 3) Perform random action (like/next/prev)
-                action, action_name = self.get_youtube_action()
-                if self._run_locked(action):
-                    self.last_youtube_action = time.time()
-                    self._run_locked(self.youtube_controller.device.press, "home")
-                    logger.info(f"YouTube Music {action_name} successful")
+                while time.time() < end_time:
+                    if self.paused:
+                        break
+                    time.sleep(1)
+
+                if self.paused:
+                    continue
+
+                if not self.paused:
+                    action, action_name = self.get_youtube_action()
+                    if self._run_locked(action):
+                        self.last_youtube_action = time.time()
+                        self._run_locked(self.youtube_controller.device.press, "home")
+                        logger.info(f"YouTube Music {action_name} successful")
 
             except Exception as e:
                 logger.error(f"Error in YouTube loop: {e}")
@@ -131,27 +135,32 @@ class MultiMusicAutomation(MutexMixin):
 
                 # 1) IsoClipboard check
                 now = time.time()
-                if now >= self.next_iso_apple:
+                if now >= self.next_iso_apple and not self.paused:
                     logger.info("Performing Apple Music IsoClipboard")
                     success = self._run_locked(self.apple_controller.handle_isoclipboard)
                     if success:
                         self._run_locked(self.apple_controller.device.press, "home")
                         logger.info("Apple Music IsoClipboard successful")
-
-                    # Reschedule next iso-clipboard
                     delay = self.get_isoclipboard_delay("apple")
                     self.next_iso_apple = time.time() + delay
 
-                # 2) Wait random time, do random music action
                 action_delay = self.get_music_action_delay("apple")
-                time.sleep(action_delay)
+                end_time = time.time() + action_delay
 
-                # 3) Perform random action
-                action, action_name = self.get_apple_action()
-                if self._run_locked(action):
-                    self.last_apple_action = time.time()
-                    self._run_locked(self.apple_controller.device.press, "home")
-                    logger.info(f"Apple Music {action_name} successful")
+                while time.time() < end_time:
+                    if self.paused:
+                        break
+                    time.sleep(1)
+
+                if self.paused:
+                    continue
+
+                if not self.paused:
+                    action, action_name = self.get_apple_action()
+                    if self._run_locked(action):
+                        self.last_apple_action = time.time()
+                        self._run_locked(self.apple_controller.device.press, "home")
+                        logger.info(f"Apple Music {action_name} successful")
 
             except Exception as e:
                 logger.error(f"Error in Apple loop: {e}")
@@ -166,27 +175,32 @@ class MultiMusicAutomation(MutexMixin):
 
                 # 1) IsoClipboard check
                 now = time.time()
-                if now >= self.next_iso_amazon:
+                if now >= self.next_iso_amazon and not self.paused:
                     logger.info("Performing Amazon Music IsoClipboard")
                     success = self._run_locked(self.amazon_controller.handle_isoclipboard)
                     if success:
                         self._run_locked(self.amazon_controller.device.press, "home")
                         logger.info("Amazon Music IsoClipboard successful")
-
-                    # Reschedule next iso-clipboard
                     delay = self.get_isoclipboard_delay("amazon")
                     self.next_iso_amazon = time.time() + delay
 
-                # 2) Wait random time, do random music action
                 action_delay = self.get_music_action_delay("amazon")
-                time.sleep(action_delay)
+                end_time = time.time() + action_delay
 
-                # 3) Perform random action
-                action, action_name = self.get_amazon_action()
-                if self._run_locked(action):
-                    self.last_amazon_action = time.time()
-                    self._run_locked(self.amazon_controller.device.press, "home")
-                    logger.info(f"Amazon Music {action_name} successful")
+                while time.time() < end_time:
+                    if self.paused:
+                        break
+                    time.sleep(1)
+
+                if self.paused:
+                    continue
+
+                if not self.paused:
+                    action, action_name = self.get_amazon_action()
+                    if self._run_locked(action):
+                        self.last_amazon_action = time.time()
+                        self._run_locked(self.amazon_controller.device.press, "home")
+                        logger.info(f"Amazon Music {action_name} successful")
 
             except Exception as e:
                 logger.error(f"Error in Amazon loop: {e}")
