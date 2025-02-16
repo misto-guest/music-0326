@@ -1,5 +1,6 @@
 # src/controllers/app_controllers/apple_music.py
 
+import re
 import time
 from typing import Dict
 import uiautomator2 as u2
@@ -41,49 +42,82 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error in cleanup: {e}")
 
     def check_play_state(self) -> bool:
-        """Check if Apple Music is currently playing using logcat."""
+        """
+        Check if Apple Music is currently playing by parsing `dumpsys media_session`.
+        Returns True if state=PLAYING(3), else False.
+        """
         try:
-            # Wait for logs to be updated
-            time.sleep(5)
+            time.sleep(2)
 
-            # Use logcat to check play state
-            cmd = "logcat -d | grep 'com.apple.android.music.*isPlaying=' | tail -n 1 | awk -F'isPlaying=' '{print $2}' | cut -d',' -f1"
+            cmd = "dumpsys media_session"
             result = self.device.shell(cmd)
+            raw_output = getattr(result, 'output', result)
 
-            # Convert result to string and clean it
-            state = str(result.output if hasattr(result, 'output') else result).strip().lower()
-            logger.info(f"Apple Music play state from logcat: {state}")
+            if not raw_output:
+                logger.error("No output from dumpsys media_session.")
+                return False
 
-            return state == "true"
+            lines = raw_output.split("\n")
+
+            apple_music_session = []
+            capturing = False
+
+            for line in lines:
+                if "MediaPlaybackService com.apple.android.music" in line:
+                    capturing = True
+                if capturing:
+                    apple_music_session.append(line)
+                    if line.strip() == "":
+                        break
+
+            if not apple_music_session:
+                logger.info("No active Apple Music session found in media_session.")
+                return False
+
+            # Search for state=PlaybackState {state=PAUSED(2), ...} or PLAYING(3)
+            pattern = re.compile(r"PlaybackState\s*\{state=(?:[A-Z]+)?\(?(\d+)\)?")
+            for line in apple_music_session:
+                if "state=PlaybackState" in line:
+                    match = pattern.search(line)
+                    if match:
+                        numeric_state = int(match.group(1))  # 2 (paused) or 3 (playing)
+                        is_playing = (numeric_state == 3)
+                        logger.info(f"Apple Music session state={numeric_state}, is_playing={is_playing}")
+                        return is_playing
+
+            logger.info("PlaybackState not found or not recognized (not playing).")
+            return False
+
         except Exception as e:
-            logger.error(f"Error checking play state from logcat: {e}")
+            logger.error(f"Error checking Apple Music play state: {e}")
             return False
 
     def ensure_playing(self) -> bool:
-        """Ensure music is playing using media controls."""
+        """
+        Ensure Apple Music is playing by checking playback state
+        and sending a media keyevent if needed.
+        """
         try:
             if not self.prepare_for_action():
-                logger.error("Could not prepare for play state check")
+                logger.error("Could not prepare for play state check.")
                 return False
 
-            # Check if we need to play
             if not self.check_play_state():
-                logger.info("Music is not playing, sending play command")
+                logger.info("Music is NOT playing, sending play command...")
                 self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
 
-                # Give more time for the play state to update in logs
-                time.sleep(8)
+                time.sleep(5)
 
-                # Verify play state after action
                 if not self.check_play_state():
-                    logger.error("Failed to start playback")
+                    logger.error("Failed to start playback (still not playing).")
                     return False
 
-                logger.info("Successfully started playback")
+                logger.info("Successfully started playback.")
             else:
-                logger.info("Music is already playing")
+                logger.info("Music is already playing.")
 
             return True
+
         except Exception as e:
             logger.error(f"Error ensuring playing state: {e}")
             return False
