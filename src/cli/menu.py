@@ -247,46 +247,32 @@ class CLI:
         """Show current automation status including pause state."""
         try:
             if self.automation:
-                if not self.automation.running:
-                    status = "Stopped"
-                elif self.automation.paused:
-                    status = "Paused"
-                else:
-                    status = "Running"
+                status = self.automation.get_status()
 
-                logger.info(f"Automation status: {status}")
+                logger.info(f"Automation status: {'Running' if status['running'] else 'Stopped'}")
+                if status['paused']:
+                    logger.info("Automation is currently paused")
 
-                if self.automation.running:
-                    active_apps = []
+                if status['running']:
+                    logger.info(f"Active apps: {', '.join(status['active_apps'])}")
 
-                    if self.automation.youtube_controller:
-                        yt_last = time.strftime('%H:%M:%S',
-                                                time.localtime(self.automation.last_youtube_action))
-                        yt_iso = time.strftime('%H:%M:%S',
-                                               time.localtime(self.automation.next_iso_youtube))
-                        active_apps.append("YouTube Music")
-                        logger.info(f"Last YouTube Music action: {yt_last}")
-                        logger.info(f"Next YouTube Music IsoClipboard: {yt_iso}")
+                    if 'YouTube Music' in status['active_apps']:
+                        if 'last_youtube_action' in status:
+                            logger.info(f"Last YouTube Music action: {status['last_youtube_action']}")
+                        if 'next_youtube_iso' in status:
+                            logger.info(f"Next YouTube Music IsoClipboard: {status['next_youtube_iso']}")
 
-                    if self.automation.apple_controller:
-                        am_last = time.strftime('%H:%M:%S',
-                                                time.localtime(self.automation.last_apple_action))
-                        am_iso = time.strftime('%H:%M:%S',
-                                               time.localtime(self.automation.next_iso_apple))
-                        active_apps.append("Apple Music")
-                        logger.info(f"Last Apple Music action: {am_last}")
-                        logger.info(f"Next Apple Music IsoClipboard: {am_iso}")
+                    if 'Apple Music' in status['active_apps']:
+                        if 'last_apple_action' in status:
+                            logger.info(f"Last Apple Music action: {status['last_apple_action']}")
+                        if 'next_apple_iso' in status:
+                            logger.info(f"Next Apple Music IsoClipboard: {status['next_apple_iso']}")
 
-                    if self.automation.amazon_controller:
-                        amz_last = time.strftime('%H:%M:%S',
-                                                 time.localtime(self.automation.last_amazon_action))
-                        amz_iso = time.strftime('%H:%M:%S',
-                                                time.localtime(self.automation.next_iso_amazon))
-                        active_apps.append("Amazon Music")
-                        logger.info(f"Last Amazon Music action: {amz_last}")
-                        logger.info(f"Next Amazon Music IsoClipboard: {amz_iso}")
-
-                    logger.info(f"Active apps: {', '.join(active_apps)}")
+                    if 'Amazon Music' in status['active_apps']:
+                        if 'last_amazon_action' in status:
+                            logger.info(f"Last Amazon Music action: {status['last_amazon_action']}")
+                        if 'next_amazon_iso' in status:
+                            logger.info(f"Next Amazon Music IsoClipboard: {status['next_amazon_iso']}")
             else:
                 logger.info("Automation status: Not initialized")
             return True
