@@ -65,7 +65,7 @@ class MultiMusicAutomation(MutexMixin):
         total_seconds = minutes * 60 + seconds
         next_time = time.strftime('%H:%M:%S', time.localtime(time.time() + total_seconds))
         logger.info(f"Next {app_name} IsoClipboard action in {minutes}m {seconds}s (at {next_time})")
-        return seconds
+        return total_seconds
 
     def get_music_action_delay(self, app_type: str) -> int:
         if app_type == "youtube":
