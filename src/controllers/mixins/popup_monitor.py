@@ -82,25 +82,24 @@ class PopupMonitorMixin:
                 popup_text = self.device(textContains="isn't responding").get_text()
                 logger.warning(f"Detected app not responding popup: {popup_text}")
 
-                # Try to click "Wait" first if available
-                if self.device(text="Wait").exists:
-                    logger.info("Attempting to click 'Wait'")
-                    self.device(text="Wait").click()
+                if self.device(text="Close app").exists:
+                    logger.info("Clicking 'Close app' by text")
+                    self.device(text="Close app").click()
+                elif self.device(resourceId="android:id/aerr_close").exists:
+                    logger.info("Clicking 'Close app' by resource ID")
+                    self.device(resourceId="android:id/aerr_close").click()
+                else:
+                    logger.error("Failed to find 'Close app' button by both text and resource ID")
                     return
 
-                # If "Wait" isn't available or didn't work, try "Close app"
-                if self.device(text="Close app").exists:
-                    logger.info("Clicking 'Close app'")
-                    self.device(text="Close app").click()
+                # Extract app name and mark for restart
+                app_name = popup_text.split("isn't")[0].strip()
+                logger.warning(f"Closed unresponsive app: {app_name}")
 
-                    # Log which app was closed
-                    app_name = popup_text.split("isn't")[0].strip()
-                    logger.warning(f"Closed unresponsive app: {app_name}")
-
-                    # If it was one of our monitored apps, mark it for restart
-                    if app_name in self._monitored_apps:
-                        logger.info(f"Will need to restart {app_name}")
-                        self._app_needs_restart[app_name] = True
+                # If it was one of our monitored apps, mark it for restart
+                if app_name in self._monitored_apps:
+                    logger.info(f"Will need to restart {app_name}")
+                    self._app_needs_restart[app_name] = True
 
             # Check for other common popups
             self._check_additional_popups()
