@@ -208,6 +208,7 @@ class CLI:
             return False
 
     def start_all_automation(self) -> bool:
+        """Start automation for all apps."""
         try:
             if not self.automation:
                 logger.info("Initializing all music apps automation...")
@@ -248,36 +249,85 @@ class CLI:
         try:
             if self.automation:
                 status = self.automation.get_status()
-
                 logger.info(f"Automation status: {'Running' if status['running'] else 'Stopped'}")
                 if status['paused']:
                     logger.info("Automation is currently paused")
-
                 if status['running']:
+                    # Log active apps first
                     logger.info(f"Active apps: {', '.join(status['active_apps'])}")
 
+                    # Then log detailed status for each active app
                     if 'YouTube Music' in status['active_apps']:
+                        logger.info("\nYouTube Music Status:")
                         if 'last_youtube_action' in status:
-                            logger.info(f"Last YouTube Music action: {status['last_youtube_action']}")
+                            logger.info(f"Last action: {status['last_youtube_action']}")
                         if 'next_youtube_iso' in status:
-                            logger.info(f"Next YouTube Music IsoClipboard: {status['next_youtube_iso']}")
+                            logger.info(f"Next IsoClipboard: {status['next_youtube_iso']}")
 
                     if 'Apple Music' in status['active_apps']:
+                        logger.info("\nApple Music Status:")
                         if 'last_apple_action' in status:
-                            logger.info(f"Last Apple Music action: {status['last_apple_action']}")
+                            logger.info(f"Last action: {status['last_apple_action']}")
                         if 'next_apple_iso' in status:
-                            logger.info(f"Next Apple Music IsoClipboard: {status['next_apple_iso']}")
+                            logger.info(f"Next IsoClipboard: {status['next_apple_iso']}")
 
                     if 'Amazon Music' in status['active_apps']:
+                        logger.info("\nAmazon Music Status:")
                         if 'last_amazon_action' in status:
-                            logger.info(f"Last Amazon Music action: {status['last_amazon_action']}")
+                            logger.info(f"Last action: {status['last_amazon_action']}")
                         if 'next_amazon_iso' in status:
-                            logger.info(f"Next Amazon Music IsoClipboard: {status['next_amazon_iso']}")
+                            logger.info(f"Next IsoClipboard: {status['next_amazon_iso']}")
             else:
                 logger.info("Automation status: Not initialized")
             return True
         except Exception as e:
             logger.error(f"Error showing automation status: {e}")
+            return False
+
+    def pause_automation(self) -> bool:
+        """Pause the current automation."""
+        try:
+            if not self.automation:
+                logger.warning("No automation is currently initialized")
+                return False
+
+            if not self.automation.running:
+                logger.warning("No automation is currently running")
+                return False
+
+            if self.automation.paused:
+                logger.warning("Automation is already paused")
+                return False
+
+            success = self.automation.pause_automation()
+            if success:
+                logger.info("Automation paused successfully")
+            return success
+        except Exception as e:
+            logger.error(f"Failed to pause automation: {e}")
+            return False
+
+    def resume_automation(self) -> bool:
+        """Resume the paused automation."""
+        try:
+            if not self.automation:
+                logger.warning("No automation is currently initialized")
+                return False
+
+            if not self.automation.running:
+                logger.warning("No automation is currently running")
+                return False
+
+            if not self.automation.paused:
+                logger.warning("Automation is not paused")
+                return False
+
+            success = self.automation.resume_automation()
+            if success:
+                logger.info("Automation resumed successfully")
+            return success
+        except Exception as e:
+            logger.error(f"Failed to resume automation: {e}")
             return False
 
     def display_menu(self, show_help: bool = False):
@@ -355,49 +405,3 @@ class CLI:
         except Exception as e:
             logger.error(f"Error executing {description}: {e}")
             return True
-
-    def pause_automation(self) -> bool:
-        """Pause the current automation."""
-        try:
-            if not self.automation:
-                logger.warning("No automation is currently initialized")
-                return False
-
-            if not self.automation.running:
-                logger.warning("No automation is currently running")
-                return False
-
-            if self.automation.paused:
-                logger.warning("Automation is already paused")
-                return False
-
-            success = self.automation.pause_automation()
-            if success:
-                logger.info("Automation paused successfully")
-            return success
-        except Exception as e:
-            logger.error(f"Failed to pause automation: {e}")
-            return False
-
-    def resume_automation(self) -> bool:
-        """Resume the paused automation."""
-        try:
-            if not self.automation:
-                logger.warning("No automation is currently initialized")
-                return False
-
-            if not self.automation.running:
-                logger.warning("No automation is currently running")
-                return False
-
-            if not self.automation.paused:
-                logger.warning("Automation is not paused")
-                return False
-
-            success = self.automation.resume_automation()
-            if success:
-                logger.info("Automation resumed successfully")
-            return success
-        except Exception as e:
-            logger.error(f"Failed to resume automation: {e}")
-            return False
