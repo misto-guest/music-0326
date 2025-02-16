@@ -3,7 +3,7 @@
 import random
 import threading
 import time
-from typing import Optional, Dict, Tuple, Callable, List, Union
+from typing import Optional, Tuple, Callable, List, Union
 from src.utils.logging_utils import setup_logger
 from src.controllers.app_controllers.youtube_music import YouTubeMusicController
 from src.controllers.app_controllers.apple_music import AppleMusicController
@@ -15,10 +15,10 @@ logger = setup_logger(__name__)
 
 class MultiMusicAutomation(MutexMixin):
     def __init__(
-            self,
-            youtube_controller: Optional[YouTubeMusicController] = None,
-            apple_controller: Optional[AppleMusicController] = None,
-            amazon_controller: Optional[AmazonMusicController] = None
+        self,
+        youtube_controller: Optional[YouTubeMusicController] = None,
+        apple_controller: Optional[AppleMusicController] = None,
+        amazon_controller: Optional[AmazonMusicController] = None
     ):
         super().__init__()
         self.youtube_controller = youtube_controller
@@ -27,36 +27,43 @@ class MultiMusicAutomation(MutexMixin):
         self.running = False
         self.paused = False
 
-        # Thread storage
+        # Threads
         self.youtube_thread: Optional[threading.Thread] = None
         self.apple_thread: Optional[threading.Thread] = None
         self.amazon_thread: Optional[threading.Thread] = None
 
-        # Timestamps
+        # Next IsoClipboard timestamps
         self.next_iso_youtube = 0.0
         self.next_iso_apple = 0.0
         self.next_iso_amazon = 0.0
+
+        # Last action timestamps
         self.last_youtube_action = 0.0
         self.last_apple_action = 0.0
         self.last_amazon_action = 0.0
 
-        # Action coordination
+        # Lock for coordinating actions
         self.action_lock = threading.Lock()
 
-    def _get_action_cluster(self,
-                            controller: Union[YouTubeMusicController, AppleMusicController, AmazonMusicController],
-                            app_type: str) -> List[Tuple[Callable, str]]:
-        """Generate a human-like cluster of 1-4 actions."""
+    def _get_action_cluster(
+        self,
+        controller: Union[YouTubeMusicController, AppleMusicController, AmazonMusicController],
+        app_type: str
+    ) -> List[Tuple[Callable, str]]:
+        """
+        Generate a cluster of 1-4 actions in a “human-like” sequence.
+        Weighted chance of Next track, Previous track, or Like song.
+        """
         actions = []
 
         weighted_actions = [
             (controller.next_track, "Next track", 50),
             (controller.previous_track, "Previous track", 20),
-            (controller.like_current_song, "Like song", 30)
+            (controller.like_current_song, "Like song", 30),
         ]
 
         cluster_weights = {
-            1: 50,  # Increased chance of single action
+            1: 50,  # 50% chance of doing just 1 action
             2: 30,
             3: 15,
             4: 5
@@ -67,6 +74,8 @@ class MultiMusicAutomation(MutexMixin):
             weights=list(cluster_weights.values())
         )[0]
 
+        # If we have more than 1 action in the cluster, increase chance
+        # of “Next track”.
         if cluster_size > 1:
             weighted_actions[0] = (weighted_actions[0][0], weighted_actions[0][1], 70)
 
@@ -77,33 +86,46 @@ class MultiMusicAutomation(MutexMixin):
             )[0]
             actions.append((action[0], action[1]))
 
+            # If we get a "Like song", boost the chance
+            # of "Next track" even more.
             if action[1] == "Like song":
                 weighted_actions[0] = (weighted_actions[0][0], weighted_actions[0][1], 80)
 
         return actions
 
     def _get_human_delay(self, is_cluster: bool = False) -> int:
+        """
+        Return a random delay to simulate "human" waiting.
+        is_cluster=True means we’re waiting between actions within
+        one cluster, so use a smaller range.
+        """
         if is_cluster:
-            return random.randint(15, 25)  # Increased delay between cluster actions
+            return random.randint(15, 25)  # e.g. 15–25s between cluster steps
 
+        # Otherwise, random wait in these brackets (in seconds):
+        # 3-5 mins (40%), 5-8 mins (30%), 8-12 mins (20%), 12-15 mins(10%).
         weights = [
-            (180, 300, 40),  # 3-5 minutes: 40% chance
-            (301, 480, 30),  # 5-8 minutes: 30% chance
-            (481, 720, 20),  # 8-12 minutes: 20% chance
-            (721, 900, 10)  # 12-15 minutes: 10% chance
+            (180, 300, 40),  # 3-5 minutes
+            (301, 480, 30),  # 5-8 minutes
+            (481, 720, 20),  # 8-12 minutes
+            (721, 900, 10)   # 12-15 minutes
         ]
-
-        selected = random.choices(weights, weights=[w[2] for w in weights])[0]
-        return random.randint(selected[0], selected[1])
+        chosen_range = random.choices(weights, weights=[w[2] for w in weights])[0]
+        return random.randint(chosen_range[0], chosen_range[1])
 
     def get_isoclipboard_delay(self, app_type: str) -> int:
+        """
+        Compute a random time until the next IsoClipboard usage,
+        depending on app_type. E.g. YT: 22–33m, Apple: 25–35m, Amazon: 27–37m.
+        """
         base_delays = {
             "youtube": (22, 33),
             "apple": (25, 35),
             "amazon": (27, 37)
         }
-
         base_min, base_max = base_delays[app_type]
+
+        # Add some randomness +/- 0–3 to the min, +0–5 to the max, but never < 15
         actual_min = max(base_min - random.randint(0, 3), 15)
         actual_max = base_max + random.randint(0, 5)
 
@@ -111,35 +133,42 @@ class MultiMusicAutomation(MutexMixin):
         seconds = random.randint(0, 59)
         total_seconds = minutes * 60 + seconds
 
-        next_time = time.strftime('%H:%M:%S', time.localtime(time.time() + total_seconds))
+        next_time_str = time.strftime(
+            '%H:%M:%S',
+            time.localtime(time.time() + total_seconds)
+        )
         app_name = {
             "youtube": "YouTube Music",
             "apple": "Apple Music",
             "amazon": "Amazon Music"
         }[app_type]
-        logger.info(f"Next {app_name} IsoClipboard in {minutes}m {seconds}s (at {next_time})")
+        logger.info(f"Next {app_name} IsoClipboard in {minutes}m {seconds}s (at {next_time_str})")
         return total_seconds
 
     def _check_safe_to_act(self) -> bool:
-        """Check if enough time has passed and no other app is in critical section."""
+        """
+        Check if enough time (15s) has passed since the last action from ANY app.
+        This ensures we don't do Apple action 2s after a YouTube action, etc.
+        """
         now = time.time()
-        last_actions = []
-
         with self.action_lock:
+            timestamps = []
             if self.youtube_controller:
-                last_actions.append(self.last_youtube_action)
+                timestamps.append(self.last_youtube_action)
             if self.apple_controller:
-                last_actions.append(self.last_apple_action)
+                timestamps.append(self.last_apple_action)
             if self.amazon_controller:
-                last_actions.append(self.last_amazon_action)
+                timestamps.append(self.last_amazon_action)
 
-            if last_actions:
-                most_recent = max(last_actions)
-                return (now - most_recent) >= 15  # Ensure 15 second gap between actions
-            return True
+            if not timestamps:
+                # If no controllers or no last actions, safe to act
+                return True
+
+            most_recent = max(timestamps)
+            return (now - most_recent) >= 15  # at least 15s since last action
 
     def _set_last_action(self, app_type: str, timestamp: float):
-        """Safely update last action timestamp."""
+        """Update the last action time for the given app type, thread-safe."""
         with self.action_lock:
             if app_type == "youtube":
                 self.last_youtube_action = timestamp
@@ -149,26 +178,45 @@ class MultiMusicAutomation(MutexMixin):
                 self.last_amazon_action = timestamp
 
     def _ensure_minimized(self, controller: Union[YouTubeMusicController, AppleMusicController, AmazonMusicController]):
-        """Ensure app is minimized after action."""
+        """
+        Press HOME and manage window state, with a short delay,
+        to ensure the app is truly minimized.
+        """
         controller.device.press("home")
         controller.manage_window_state(True)
-        time.sleep(1)  # Short delay to ensure minimize completes
+        time.sleep(1)
 
-    def _execute_action_cluster(self,
-                                controller: Union[YouTubeMusicController, AppleMusicController, AmazonMusicController],
-                                actions: List[Tuple[Callable, str]], app_type: str) -> bool:
-        """Execute a cluster of actions with proper coordination."""
-        for action, action_name in actions:
+    def _execute_action_cluster(
+        self,
+        controller: Union[YouTubeMusicController, AppleMusicController, AmazonMusicController],
+        actions: List[Tuple[Callable, str]],
+        app_type: str
+    ) -> bool:
+        """
+        Execute a cluster of 1–4 actions for an app, ensuring
+        we wait 15s from the last action, etc.
+        """
+        for (action, action_name) in actions:
+            # Wait for the safe gap
             if not self._check_safe_to_act():
                 logger.info(f"Skipping {app_type} {action_name} - too soon after last action")
                 return False
 
+            # Attempt the action
             with self.action_lock:
-                if action():
+                success = action()
+                if success:
+                    # Mark last action time
                     self._set_last_action(app_type, time.time())
-                    self._ensure_minimized(controller)  # Updated to ensure app minimizes
+
+                    # Immediately minimize the app after the single action
+                    controller.device.press("home")
+                    controller.manage_window_state(True)
+                    time.sleep(1)
+
                     logger.info(f"{app_type} {action_name} successful")
 
+                    # If multiple actions in the cluster, do a shorter wait between them
                     if len(actions) > 1:
                         time.sleep(self._get_human_delay(is_cluster=True))
                 else:
@@ -177,29 +225,36 @@ class MultiMusicAutomation(MutexMixin):
         return True
 
     def _youtube_loop(self):
-        """YouTube loop with better coordination."""
+        """Main loop for YouTube Music automation."""
         while self.running and self.youtube_controller:
             try:
                 if self.paused:
+                    # If paused, sleep 5 minutes, then check again
                     time.sleep(300)
                     continue
 
                 now = time.time()
 
+                # Check if it's time for an IsoClipboard run
                 if now >= self.next_iso_youtube and self._check_safe_to_act():
                     with self.action_lock:
                         logger.info("Performing YouTube Music IsoClipboard")
                         if self.youtube_controller.handle_isoclipboard():
                             self._ensure_minimized(self.youtube_controller)
                             logger.info("YouTube Music IsoClipboard successful")
+
+                            # Schedule next iso
                             self.next_iso_youtube = time.time() + self.get_isoclipboard_delay("youtube")
                             time.sleep(random.randint(5, 15))
-                        continue
+                        # continue to next iteration
+                    continue
 
+                # Otherwise, do a small cluster of actions if it's safe
                 if self._check_safe_to_act():
                     actions = self._get_action_cluster(self.youtube_controller, "youtube")
                     self._execute_action_cluster(self.youtube_controller, actions, "youtube")
 
+                # Sleep the big "human" delay
                 time.sleep(self._get_human_delay(is_cluster=False))
 
             except Exception as e:
@@ -207,7 +262,7 @@ class MultiMusicAutomation(MutexMixin):
                 time.sleep(60)
 
     def _apple_loop(self):
-        """Apple loop with better coordination."""
+        """Main loop for Apple Music automation."""
         while self.running and self.apple_controller:
             try:
                 if self.paused:
@@ -216,16 +271,19 @@ class MultiMusicAutomation(MutexMixin):
 
                 now = time.time()
 
+                # Check if time for IsoClipboard
                 if now >= self.next_iso_apple and self._check_safe_to_act():
                     with self.action_lock:
                         logger.info("Performing Apple Music IsoClipboard")
                         if self.apple_controller.handle_isoclipboard():
                             self._ensure_minimized(self.apple_controller)
                             logger.info("Apple Music IsoClipboard successful")
+
                             self.next_iso_apple = time.time() + self.get_isoclipboard_delay("apple")
                             time.sleep(random.randint(5, 15))
                         continue
 
+                # Otherwise, do a cluster
                 if self._check_safe_to_act():
                     actions = self._get_action_cluster(self.apple_controller, "apple")
                     self._execute_action_cluster(self.apple_controller, actions, "apple")
@@ -237,7 +295,7 @@ class MultiMusicAutomation(MutexMixin):
                 time.sleep(60)
 
     def _amazon_loop(self):
-        """Amazon loop with better coordination."""
+        """Main loop for Amazon Music automation."""
         while self.running and self.amazon_controller:
             try:
                 if self.paused:
@@ -246,16 +304,19 @@ class MultiMusicAutomation(MutexMixin):
 
                 now = time.time()
 
+                # IsoClipboard check
                 if now >= self.next_iso_amazon and self._check_safe_to_act():
                     with self.action_lock:
                         logger.info("Performing Amazon Music IsoClipboard")
                         if self.amazon_controller.handle_isoclipboard():
                             self._ensure_minimized(self.amazon_controller)
                             logger.info("Amazon Music IsoClipboard successful")
+
                             self.next_iso_amazon = time.time() + self.get_isoclipboard_delay("amazon")
                             time.sleep(random.randint(5, 15))
                         continue
 
+                # Otherwise do cluster
                 if self._check_safe_to_act():
                     actions = self._get_action_cluster(self.amazon_controller, "amazon")
                     self._execute_action_cluster(self.amazon_controller, actions, "amazon")
@@ -267,7 +328,7 @@ class MultiMusicAutomation(MutexMixin):
                 time.sleep(60)
 
     def _youtube_initial_setup(self) -> bool:
-        """Initial setup for YouTube Music."""
+        """One-time initial setup for YT Music."""
         logger.info("Starting YouTube Music initial setup...")
         try:
             if not self.youtube_controller.force_stop():
@@ -275,10 +336,12 @@ class MultiMusicAutomation(MutexMixin):
                 return False
             time.sleep(2)
 
+            # Do an iso-clipboard pass as part of the init
             if not self.youtube_controller.handle_isoclipboard():
                 logger.error("YT Music iso-clipboard setup failed")
                 return False
 
+            # Minimize
             if not self.youtube_controller.manage_window_state(True):
                 logger.warning("Failed to minimize YT window")
 
@@ -289,7 +352,6 @@ class MultiMusicAutomation(MutexMixin):
             return False
 
     def _apple_initial_setup(self) -> bool:
-        """Initial setup for Apple Music."""
         logger.info("Starting Apple Music initial setup...")
         try:
             if not self.apple_controller.force_stop():
@@ -310,7 +372,6 @@ class MultiMusicAutomation(MutexMixin):
             return False
 
     def _amazon_initial_setup(self) -> bool:
-        """Initial setup for Amazon Music."""
         logger.info("Starting Amazon Music initial setup...")
         try:
             if not self.amazon_controller.force_stop():
@@ -331,57 +392,60 @@ class MultiMusicAutomation(MutexMixin):
             return False
 
     def start_automation(self) -> bool:
-        """Start automation for all available controllers."""
+        """
+        Start automation for all available controllers.
+        Runs initial setups for each (sequentially, with 5s gap),
+        then starts each app loop in its own thread.
+        """
         if self.running:
             logger.warning("Automation already running")
             return False
 
-        controllers_available = any([
-            self.youtube_controller,
-            self.apple_controller,
-            self.amazon_controller
-        ])
-        if not controllers_available:
+        # Check that at least one controller is available
+        if not any([self.youtube_controller, self.apple_controller, self.amazon_controller]):
             logger.error("No music controllers available")
             return False
 
-        # Sequential initial setup with delays between apps
+        # Initial setups (sequential)
         if self.youtube_controller:
             if not self._youtube_initial_setup():
                 return False
-            time.sleep(5)  # Delay between app setups
+            time.sleep(5)  # short gap
 
         if self.apple_controller:
             if not self._apple_initial_setup():
                 return False
-            time.sleep(5)  # Delay between app setups
+            time.sleep(5)
 
         if self.amazon_controller:
             if not self._amazon_initial_setup():
                 return False
 
+        # Everything set; start threads
         now = time.time()
         self.running = True
 
-        # Stagger the initial IsoClipboard times
+        # Stagger iso times so they won't all run exactly together
         if self.youtube_controller:
             self.next_iso_youtube = now + self.get_isoclipboard_delay("youtube")
             self.last_youtube_action = now
             self.youtube_thread = threading.Thread(target=self._youtube_loop, daemon=True)
             self.youtube_thread.start()
             logger.info("Launched YouTube Music automation thread")
-            time.sleep(5)  # Delay between thread starts
+            time.sleep(5)
 
         if self.apple_controller:
-            self.next_iso_apple = now + self.get_isoclipboard_delay("apple") + 120  # Add 2 minutes
+            # Add 2 extra minutes to Apple iso start
+            self.next_iso_apple = now + self.get_isoclipboard_delay("apple") + 120
             self.last_apple_action = now
             self.apple_thread = threading.Thread(target=self._apple_loop, daemon=True)
             self.apple_thread.start()
             logger.info("Launched Apple Music automation thread")
-            time.sleep(5)  # Delay between thread starts
+            time.sleep(5)
 
         if self.amazon_controller:
-            self.next_iso_amazon = now + self.get_isoclipboard_delay("amazon") + 240  # Add 4 minutes
+            # Add 4 extra minutes to Amazon iso start
+            self.next_iso_amazon = now + self.get_isoclipboard_delay("amazon") + 240
             self.last_amazon_action = now
             self.amazon_thread = threading.Thread(target=self._amazon_loop, daemon=True)
             self.amazon_thread.start()
@@ -391,7 +455,7 @@ class MultiMusicAutomation(MutexMixin):
         return True
 
     def stop_automation(self):
-        """Stop all automation with proper cleanup."""
+        """Stop all automation and join the threads."""
         if not self.running:
             logger.warning("No automation is currently running to stop.")
             return
@@ -399,7 +463,7 @@ class MultiMusicAutomation(MutexMixin):
         logger.info("Stopping automation...")
         self.running = False
 
-        # Join threads with timeout
+        # Join each thread if alive
         if self.youtube_thread and self.youtube_thread.is_alive():
             self.youtube_thread.join(timeout=5)
             self.youtube_thread = None
@@ -412,7 +476,7 @@ class MultiMusicAutomation(MutexMixin):
             self.amazon_thread.join(timeout=5)
             self.amazon_thread = None
 
-        # Reset all timings
+        # Reset everything
         with self.action_lock:
             self.next_iso_youtube = 0
             self.next_iso_apple = 0
@@ -424,7 +488,7 @@ class MultiMusicAutomation(MutexMixin):
         logger.info("Automation stopped successfully.")
 
     def start_youtube_only(self) -> bool:
-        """Start automation for YouTube Music only."""
+        """Start just YouTube Music automation."""
         try:
             if not self.youtube_controller:
                 logger.error("No YouTube Music controller available")
@@ -441,7 +505,6 @@ class MultiMusicAutomation(MutexMixin):
             self.youtube_thread = threading.Thread(target=self._youtube_loop, daemon=True)
             self.youtube_thread.start()
             logger.info("YouTube Music automation thread started")
-
             return True
         except Exception as e:
             logger.error(f"Error starting YouTube Music automation: {e}")
@@ -449,7 +512,7 @@ class MultiMusicAutomation(MutexMixin):
             return False
 
     def start_apple_only(self) -> bool:
-        """Start automation for Apple Music only."""
+        """Start just Apple Music automation."""
         try:
             if not self.apple_controller:
                 logger.error("No Apple Music controller available")
@@ -466,7 +529,6 @@ class MultiMusicAutomation(MutexMixin):
             self.apple_thread = threading.Thread(target=self._apple_loop, daemon=True)
             self.apple_thread.start()
             logger.info("Apple Music automation thread started")
-
             return True
         except Exception as e:
             logger.error(f"Error starting Apple Music automation: {e}")
@@ -474,7 +536,7 @@ class MultiMusicAutomation(MutexMixin):
             return False
 
     def start_amazon_only(self) -> bool:
-        """Start automation for Amazon Music only."""
+        """Start just Amazon Music automation."""
         try:
             if not self.amazon_controller:
                 logger.error("No Amazon Music controller available")
@@ -491,7 +553,6 @@ class MultiMusicAutomation(MutexMixin):
             self.amazon_thread = threading.Thread(target=self._amazon_loop, daemon=True)
             self.amazon_thread.start()
             logger.info("Amazon Music automation thread started")
-
             return True
         except Exception as e:
             logger.error(f"Error starting Amazon Music automation: {e}")
@@ -499,15 +560,15 @@ class MultiMusicAutomation(MutexMixin):
             return False
 
     def pause_automation(self) -> bool:
-        """Pause running automation."""
+        """Pause running automation by setting a flag. Loops will sleep if paused."""
         try:
-            if not self.running:
-                logger.warning("No automation is currently running")
-                return False
-            if self.paused:
-                logger.warning("Automation is already paused")
-                return False
             with self.action_lock:
+                if not self.running:
+                    logger.warning("No automation is currently running")
+                    return False
+                if self.paused:
+                    logger.warning("Automation is already paused")
+                    return False
                 logger.info("Pausing automation...")
                 self.paused = True
             return True
@@ -516,15 +577,15 @@ class MultiMusicAutomation(MutexMixin):
             return False
 
     def resume_automation(self) -> bool:
-        """Resume paused automation."""
+        """Resume from paused state."""
         try:
-            if not self.running:
-                logger.warning("No automation is currently running")
-                return False
-            if not self.paused:
-                logger.warning("Automation is not paused")
-                return False
             with self.action_lock:
+                if not self.running:
+                    logger.warning("No automation is currently running")
+                    return False
+                if not self.paused:
+                    logger.warning("Automation is not paused")
+                    return False
                 logger.info("Resuming automation...")
                 self.paused = False
             return True
@@ -533,7 +594,7 @@ class MultiMusicAutomation(MutexMixin):
             return False
 
     def get_status(self) -> dict:
-        """Get detailed automation status."""
+        """Get a dictionary describing current automation status."""
         with self.action_lock:
             status = {
                 "running": self.running,
@@ -544,28 +605,40 @@ class MultiMusicAutomation(MutexMixin):
             if self.youtube_controller:
                 status["active_apps"].append("YouTube Music")
                 if self.last_youtube_action > 0:
-                    status["last_youtube_action"] = time.strftime('%H:%M:%S',
-                                                                  time.localtime(self.last_youtube_action))
+                    status["last_youtube_action"] = time.strftime(
+                        '%H:%M:%S',
+                        time.localtime(self.last_youtube_action)
+                    )
                 if self.next_iso_youtube > 0:
-                    status["next_youtube_iso"] = time.strftime('%H:%M:%S',
-                                                               time.localtime(self.next_iso_youtube))
+                    status["next_youtube_iso"] = time.strftime(
+                        '%H:%M:%S',
+                        time.localtime(self.next_iso_youtube)
+                    )
 
             if self.apple_controller:
                 status["active_apps"].append("Apple Music")
                 if self.last_apple_action > 0:
-                    status["last_apple_action"] = time.strftime('%H:%M:%S',
-                                                                time.localtime(self.last_apple_action))
+                    status["last_apple_action"] = time.strftime(
+                        '%H:%M:%S',
+                        time.localtime(self.last_apple_action)
+                    )
                 if self.next_iso_apple > 0:
-                    status["next_apple_iso"] = time.strftime('%H:%M:%S',
-                                                             time.localtime(self.next_iso_apple))
+                    status["next_apple_iso"] = time.strftime(
+                        '%H:%M:%S',
+                        time.localtime(self.next_iso_apple)
+                    )
 
             if self.amazon_controller:
                 status["active_apps"].append("Amazon Music")
                 if self.last_amazon_action > 0:
-                    status["last_amazon_action"] = time.strftime('%H:%M:%S',
-                                                                 time.localtime(self.last_amazon_action))
+                    status["last_amazon_action"] = time.strftime(
+                        '%H:%M:%S',
+                        time.localtime(self.last_amazon_action)
+                    )
                 if self.next_iso_amazon > 0:
-                    status["next_amazon_iso"] = time.strftime('%H:%M:%S',
-                                                              time.localtime(self.next_iso_amazon))
+                    status["next_amazon_iso"] = time.strftime(
+                        '%H:%M:%S',
+                        time.localtime(self.next_iso_amazon)
+                    )
 
             return status

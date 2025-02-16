@@ -256,23 +256,22 @@ class CLI:
                     # Log active apps first
                     logger.info(f"Active apps: {', '.join(status['active_apps'])}")
 
-                    # Then log detailed status for each active app
                     if 'YouTube Music' in status['active_apps']:
-                        logger.info("\nYouTube Music Status:")
+                        logger.info("YouTube Music Status:")
                         if 'last_youtube_action' in status:
                             logger.info(f"Last action: {status['last_youtube_action']}")
                         if 'next_youtube_iso' in status:
                             logger.info(f"Next IsoClipboard: {status['next_youtube_iso']}")
 
                     if 'Apple Music' in status['active_apps']:
-                        logger.info("\nApple Music Status:")
+                        logger.info("Apple Music Status:")
                         if 'last_apple_action' in status:
                             logger.info(f"Last action: {status['last_apple_action']}")
                         if 'next_apple_iso' in status:
                             logger.info(f"Next IsoClipboard: {status['next_apple_iso']}")
 
                     if 'Amazon Music' in status['active_apps']:
-                        logger.info("\nAmazon Music Status:")
+                        logger.info("Amazon Music Status:")
                         if 'last_amazon_action' in status:
                             logger.info(f"Last action: {status['last_amazon_action']}")
                         if 'next_amazon_iso' in status:

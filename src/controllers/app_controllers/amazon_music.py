@@ -338,150 +338,165 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error preparing for action: {e}")
             return False
 
+
     def play_pause(self) -> bool:
-        """Toggle play/pause state with keyevent fallback."""
+        """Toggle play/pause with a max 15-second wait for Amazon Music readiness."""
+        start_time = time.time()
         try:
             logger.info("Attempting play/pause...")
 
-            if not self.prepare_for_action():
-                if self.needs_restart("Amazon Music"):
-                    logger.info("Retrying after force-close")
-                    self.clear_restart_flag("Amazon Music")
-                    time.sleep(2)
-                    if not self.prepare_for_action():
-                        logger.info("Using keyevent fallback")
-                        self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
-                        return True
-                else:
-                    logger.info("Using keyevent fallback")
-                    self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
-                    return True
+            # 1. Wait up to 15s for Amazon Music readiness.
+            prepared = False
+            while time.time() - start_time < 15:
+                if self.prepare_for_action():
+                    prepared = True
+                    break
+                time.sleep(2)
 
-            play_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/PersistentPlayerPlayButton"]')
-            if not play_button.exists:
-                logger.info("Play button not found, using keyevent")
+            if not prepared:
+                logger.warning("Timed out preparing Amazon Music; using keyevent fallback.")
                 self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
-                time.sleep(1)
                 return True
 
-            play_button.click()
-            logger.info("Clicked play/pause button")
-            time.sleep(1)
+            # 2. If prepared, try the actual UI approach:
+            play_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/PersistentPlayerPlayButton"]')
+            if play_button.exists:
+                play_button.click()
+                logger.info("Clicked Amazon Music play/pause button")
+                time.sleep(2)
+                return True
+
+            logger.info("Play button not found, using keyevent fallback")
+            self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
+            time.sleep(2)
             return True
+
         except Exception as e:
             logger.error(f"Error toggling play/pause: {e}")
+            # Final fallback
             try:
                 self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
                 logger.info("Sent play/pause keyevent after error")
-                time.sleep(1)
+                time.sleep(2)
                 return True
             except:
                 return False
 
     def next_track(self) -> bool:
-        """Skip to next track with keyevent fallback."""
+        """Skip to next track with a max 15-second wait for Amazon Music readiness."""
+        start_time = time.time()
         try:
             logger.info("Attempting next track...")
 
-            if not self.prepare_for_action():
-                if self.needs_restart("Amazon Music"):
-                    logger.info("Retrying after force-close")
-                    self.clear_restart_flag("Amazon Music")
-                    time.sleep(2)
-                    if not self.prepare_for_action():
-                        logger.info("Using keyevent fallback")
-                        self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
-                        return True
-                else:
-                    logger.info("Using keyevent fallback")
-                    self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
-                    return True
+            # 1. Wait up to 15s for readiness.
+            prepared = False
+            while time.time() - start_time < 15:
+                if self.prepare_for_action():
+                    prepared = True
+                    break
+                time.sleep(2)
 
-            next_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/PersistentPlayerNextButton"]')
-            if not next_button.exists:
-                logger.info("Next button not found, using keyevent")
+            if not prepared:
+                logger.warning("Timed out preparing Amazon Music; using keyevent fallback for next track")
                 self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
                 time.sleep(2)
                 return True
 
-            next_button.click()
-            logger.info("Clicked next track button")
+            # 2. If prepared, try the UI next button.
+            next_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/PersistentPlayerNextButton"]')
+            if next_button.exists:
+                next_button.click()
+                logger.info("Clicked next track button")
+                time.sleep(2)
+                return True
+
+            logger.info("Next button not found, using keyevent fallback")
+            self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
             time.sleep(2)
             return True
+
         except Exception as e:
             logger.error(f"Error skipping to next track: {e}")
+            # Final fallback
             try:
                 self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
-                logger.info("Sent next track keyevent after error")
                 time.sleep(2)
                 return True
             except:
                 return False
 
     def previous_track(self) -> bool:
-        """Go to previous track with keyevent fallback."""
+        """Go to previous track with a max 15-second wait for Amazon Music readiness."""
+        start_time = time.time()
         try:
-            logger.info("Attempting previous track...")
+            logger.info("Amazon Music: Attempting previous track...")
 
-            if not self.prepare_for_action():
-                if self.needs_restart("Amazon Music"):
-                    logger.info("Retrying after force-close")
-                    self.clear_restart_flag("Amazon Music")
-                    time.sleep(2)
-                    if not self.prepare_for_action():
-                        logger.info("Using keyevent fallback")
-                        self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
-                        return True
-                else:
-                    logger.info("Using keyevent fallback")
-                    self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
-                    return True
+            # Wait up to 15s for Amazon Music to be ready.
+            prepared = False
+            while time.time() - start_time < 15:
+                if self.prepare_for_action():
+                    prepared = True
+                    break
+                time.sleep(2)
 
-            prev_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/PersistentPlayerPrevButton"]')
-            if not prev_button.exists:
-                logger.info("Previous button not found, using keyevent")
+            if not prepared:
+                logger.warning("Amazon Music: Timed out preparing; using keyevent fallback for previous track")
                 self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
                 time.sleep(2)
                 return True
 
-            prev_button.click()
-            logger.info("Clicked previous track button")
+            # Try the UI previous button.
+            prev_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/PersistentPlayerPrevButton"]')
+            if prev_button.exists:
+                prev_button.click()
+                logger.info("Amazon Music: Clicked previous track button")
+                time.sleep(2)
+                return True
+
+            logger.info("Amazon Music: UI previous button not found; using keyevent fallback")
+            self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
             time.sleep(2)
             return True
+
         except Exception as e:
-            logger.error(f"Error going to previous track: {e}")
+            logger.error(f"Amazon Music: Error going to previous track: {e}")
             try:
                 self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
-                logger.info("Sent previous track keyevent after error")
                 time.sleep(2)
                 return True
-            except:
+            except Exception as ex:
+                logger.error(f"Amazon Music: Fallback keyevent failed: {ex}")
                 return False
 
     def like_current_song(self) -> bool:
-        """Like the currently playing song."""
+        """Like current song with a max 15-second wait for Amazon Music readiness."""
+        start_time = time.time()
         try:
             logger.info("Starting like song action...")
 
-            if not self.prepare_for_action():
-                if self.needs_restart("Amazon Music"):
-                    logger.info("Retrying after force-close")
-                    self.clear_restart_flag("Amazon Music")
-                    time.sleep(2)
-                    if not self.prepare_for_action():
-                        return False
-                else:
-                    return False
+            # 1. Wait up to 15s for readiness.
+            prepared = False
+            while time.time() - start_time < 15:
+                if self.prepare_for_action():
+                    prepared = True
+                    break
+                time.sleep(2)
 
+            if not prepared:
+                logger.warning("Timed out preparing Amazon Music; cannot like song.")
+                return False
+
+            # 2. Try to click the 'like' button if it exists.
             like_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/StageLikeButtonWrapper"]')
             if not like_button.exists:
-                logger.error("Like button not found")
+                logger.error("Like button not found in Amazon Music.")
                 return False
 
             like_button.click()
-            logger.info("Clicked like button")
+            logger.info("Clicked like button in Amazon Music")
             time.sleep(2)
             return True
+
         except Exception as e:
             logger.error(f"Error liking current song: {e}")
             return False
