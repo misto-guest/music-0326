@@ -227,7 +227,7 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
                 return False
 
             # Click FETCH button for Tidal (assuming buttonFetchUrl4 for Tidal)
-            fetch_xpath = '//*[@resource-id="com.example.isolatedclipboard:id/buttonFetchUrl4"]'
+            fetch_xpath = '//*[@resource-id="com.example.isolatedclipboard:id/buttonFetchUrl7"]'
             fetch_button = self.device.xpath(fetch_xpath)
 
             if fetch_button.exists:
@@ -237,7 +237,7 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
                 time.sleep(8)
             else:
                 # Fallback to resourceId if XPath fails
-                fetch_button = self.device(resourceId="com.example.isolatedclipboard:id/buttonFetchUrl4")
+                fetch_button = self.device(resourceId="com.example.isolatedclipboard:id/buttonFetchUrl7")
                 if not fetch_button.exists:
                     logger.error("FETCH Tidal button not found")
                     return False

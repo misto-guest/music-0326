@@ -643,3 +643,30 @@ class MultiMusicAutomation(MutexMixin):
             except Exception as e:
                 logger.error(f"Error in Amazon loop: {e}")
                 time.sleep
+
+    def start_tidal_only(self) -> bool:
+        """Start Tidal Music automation only with initial setup."""
+        if not self.tidal_controller:
+            logger.error("No Tidal Music controller available")
+            return False
+
+        # Run initial setup for Tidal Music
+        if not self._tidal_initial_setup():
+            logger.error("Tidal Music initial setup failed")
+            return False
+
+        self.running = True
+        now = time.time()
+
+        # Start action processing thread
+        self.action_thread = threading.Thread(target=self._process_actions, daemon=True)
+        self.action_thread.start()
+
+        # Set delays and start the Tidal thread
+        self.next_iso_tidal = now + self.get_isoclipboard_delay("tidal")
+        self.last_tidal_action = now
+        self.tidal_thread = threading.Thread(target=self._tidal_loop, daemon=True)
+        self.tidal_thread.start()
+
+        logger.info("Started Tidal Music automation")
+        return True

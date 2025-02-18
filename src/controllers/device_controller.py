@@ -10,6 +10,7 @@ from src.constants.app_configs import MusicApps
 from src.controllers.app_controllers.apple_music import AppleMusicController
 from src.controllers.app_controllers.youtube_music import YouTubeMusicController
 from src.controllers.app_controllers.amazon_music import AmazonMusicController
+from src.controllers.app_controllers.tidal_music import TidalMusicController
 
 logger = setup_logger(__name__)
 
@@ -29,7 +30,8 @@ class DeviceController:
         self.app_controllers = {
             'apple_music': AppleMusicController(self.device),
             'youtube_music': YouTubeMusicController(self.device),
-            'amazon_music': AmazonMusicController(self.device)
+            'amazon_music': AmazonMusicController(self.device),
+            'tidal_music': TidalMusicController(self.device)
         }
 
     def get_app_name_from_package(self, package_name: str) -> str:
