@@ -160,6 +160,9 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
             if not self._handle_shuffle_and_play():
                 return False
 
+            self._ensure_mini_player()
+            time.sleep(2)
+
             self.device.press("home")
             time.sleep(1)
             return True
@@ -170,6 +173,19 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
         finally:
             if initial_rotation_state:
                 self._restore_rotation_state(initial_rotation_state)
+
+    def _ensure_mini_player(self):
+        try:
+            logger.info("Searching for mini_player element...")
+            mini_player = self.device.xpath('//*[@resource-id="com.aspiro.tidal:id/miniControlsView"]')
+            if mini_player.exists:
+                mini_player.click()
+                logger.info("Clicked mini_player to ensure correct Tidal state")
+                time.sleep(1)
+            else:
+                logger.info("mini_player element not found")
+        except Exception as e:
+            logger.error(f"Error ensuring mini_player state: {e}")
 
     def _start_isoclipboard_safely(self) -> bool:
         """Start IsoClipboard app with improved timing and safety checks."""
