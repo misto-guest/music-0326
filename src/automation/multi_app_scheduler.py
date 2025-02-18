@@ -213,7 +213,7 @@ class MultiMusicAutomation(MutexMixin):
         return True
 
     def _youtube_loop(self):
-        """YouTube loop using action queue with music action delay."""
+        """YouTube loop using action queue with numeric logging for each human-like step."""
         while self.running and self.youtube_controller:
             try:
                 if self.paused:
@@ -233,23 +233,21 @@ class MultiMusicAutomation(MutexMixin):
                     self.next_iso_youtube = time.time() + self.get_isoclipboard_delay("youtube")
                     continue
 
-                # Check if it is safe to perform a new cluster of actions
+                # Check if it's safe to perform a new cluster of actions
                 if self._check_safe_to_act():
                     actions = self._get_action_cluster(self.youtube_controller, "youtube")
+                    total_steps = len(actions)
 
-                    # Process the first action in the cluster immediately
-                    first_action = actions[0]
-                    self._add_action('youtube_music', first_action[0], first_action[1])
-                    self.action_queue.join()  # Wait for first action to complete
+                    for i, (func, action_name) in enumerate(actions):
+                        if i > 0:
+                            intra_cluster_delay = self._get_human_delay(is_cluster=True)
+                            time.sleep(intra_cluster_delay)
 
-                    # Process any subsequent actions in the cluster with a short human-like delay
-                    for action in actions[1:]:
-                        intra_cluster_delay = self._get_human_delay(is_cluster=True)
-                        time.sleep(intra_cluster_delay)
-                        self._add_action('youtube_music', action[0], action[1])
+                        logger.info(f"Processing YouTube Music action {i + 1}/{total_steps}: {action_name}")
+                        self._add_action('youtube_music', func, action_name)
                         self.action_queue.join()  # Wait for each action to complete
 
-                # Instead of sleeping a random 30-60 seconds, use get_music_action_delay
+                # Use the custom delay function to determine the wait time before the next cluster
                 delay = self.get_music_action_delay("youtube")
                 time.sleep(delay)
 
@@ -258,7 +256,7 @@ class MultiMusicAutomation(MutexMixin):
                 time.sleep(60)
 
     def _apple_loop(self):
-        """Apple Music loop using action queue with music action delay."""
+        """Apple Music loop using action queue with numeric logging for each human-like step."""
         while self.running and self.apple_controller:
             try:
                 if self.paused:
@@ -281,20 +279,18 @@ class MultiMusicAutomation(MutexMixin):
                 # Check if it's safe to perform a new cluster of actions
                 if self._check_safe_to_act():
                     actions = self._get_action_cluster(self.apple_controller, "apple")
+                    total_steps = len(actions)
 
-                    # Process the first action in the cluster immediately
-                    first_action = actions[0]
-                    self._add_action('apple_music', first_action[0], first_action[1])
-                    self.action_queue.join()  # Wait for first action to complete
+                    for i, (func, action_name) in enumerate(actions):
+                        if i > 0:
+                            intra_cluster_delay = self._get_human_delay(is_cluster=True)
+                            time.sleep(intra_cluster_delay)
 
-                    # Process any subsequent actions in the cluster with a short human-like delay
-                    for action in actions[1:]:
-                        intra_cluster_delay = self._get_human_delay(is_cluster=True)
-                        time.sleep(intra_cluster_delay)
-                        self._add_action('apple_music', action[0], action[1])
+                        logger.info(f"Processing Apple Music action {i + 1}/{total_steps}: {action_name}")
+                        self._add_action('apple_music', func, action_name)
                         self.action_queue.join()  # Wait for each action to complete
 
-                # Instead of a fixed sleep, use get_music_action_delay to determine the wait time
+                # Use the custom delay function to determine the wait time before the next cluster
                 delay = self.get_music_action_delay("apple")
                 time.sleep(delay)
 
@@ -303,7 +299,7 @@ class MultiMusicAutomation(MutexMixin):
                 time.sleep(60)
 
     def _amazon_loop(self):
-        """Amazon Music loop using action queue with music action delay."""
+        """Amazon Music loop using action queue with numeric logging for each human-like step."""
         while self.running and self.amazon_controller:
             try:
                 if self.paused:
@@ -326,17 +322,15 @@ class MultiMusicAutomation(MutexMixin):
                 # Check if it's safe to perform a new cluster of actions
                 if self._check_safe_to_act():
                     actions = self._get_action_cluster(self.amazon_controller, "amazon")
+                    total_steps = len(actions)
 
-                    # Process the first action in the cluster immediately
-                    first_action = actions[0]
-                    self._add_action('amazon_music', first_action[0], first_action[1])
-                    self.action_queue.join()  # Wait for first action to complete
+                    for i, (func, action_name) in enumerate(actions):
+                        if i > 0:
+                            intra_cluster_delay = self._get_human_delay(is_cluster=True)
+                            time.sleep(intra_cluster_delay)
 
-                    # Process any subsequent actions in the cluster with a short human-like delay
-                    for action in actions[1:]:
-                        intra_cluster_delay = self._get_human_delay(is_cluster=True)
-                        time.sleep(intra_cluster_delay)
-                        self._add_action('amazon_music', action[0], action[1])
+                        logger.info(f"Processing Amazon Music action {i + 1}/{total_steps}: {action_name}")
+                        self._add_action('amazon_music', func, action_name)
                         self.action_queue.join()  # Wait for each action to complete
 
                 # Use the custom delay function to determine the wait time before the next cluster
