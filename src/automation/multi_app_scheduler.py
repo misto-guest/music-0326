@@ -561,9 +561,9 @@ class MultiMusicAutomation(MutexMixin):
 
     @with_device_lock
     def _safe_app_switch(self, from_app: str, to_app: str) -> bool:
-        """Safely switch between apps with sequential locking."""
+        """Safely switch between apps with strict ordering."""
         try:
-            logger.info(f"Switching from {from_app} to {to_app}")
+            logger.info(f"Starting app switch from {from_app} to {to_app}")
 
             # Get the right controller based on app name
             if to_app == 'youtube_music':
@@ -580,15 +580,30 @@ class MultiMusicAutomation(MutexMixin):
                 logger.error(f"No controller found for {to_app}")
                 return False
 
-            # Give a small delay between actions
-            time.sleep(3)  # Increased from 2 to 3 seconds
+            # Initial delay before starting switch
+            time.sleep(3)
 
-            # Bring app to foreground and verify
-            success = controller.prepare_for_action()
-            if success:
-                time.sleep(2)  # Additional stabilization delay
+            # Press home first to clear state
+            controller.device.press("home")
+            time.sleep(2)
 
-            return success
+            # Try to bring app to foreground
+            if not controller.prepare_for_action():
+                logger.warning(f"First attempt to prepare {to_app} failed, retrying...")
+                time.sleep(2)
+                if not controller.prepare_for_action():
+                    return False
+
+            # Verify app is in foreground
+            current_app = controller.device.app_current().get('package', '')
+            if controller.package_name not in current_app:
+                logger.warning(f"{to_app} not in foreground, waiting...")
+                time.sleep(2)
+                return False
+
+            # Additional stabilization delay
+            time.sleep(2)
+            return True
 
         except Exception as e:
             logger.error(f"Error switching apps: {e}")
