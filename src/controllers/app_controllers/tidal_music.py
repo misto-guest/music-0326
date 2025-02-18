@@ -261,7 +261,7 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
             logger.info("Looking for Tidal shuffle button...")
 
             # Tidal-specific shuffle button ID
-            shuffle_button = self.device.xpath('//*[@resource-id="com.aspiro.tidal:id/shuffle_button"]')
+            shuffle_button = self.device.xpath('//*[@resource-id="com.aspiro.tidal:id/playbackControlButtonSecond"]')
             if not shuffle_button.exists:
                 logger.error("Tidal shuffle button not found")
                 return False
@@ -319,7 +319,7 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
                 return True
 
             # 2. If prepared, try the actual UI approach:
-            play_button = self.device.xpath('//*[@resource-id="com.aspiro.tidal:id/play_pause_button"]')
+            play_button = self.device.xpath('//*[@resource-id="com.aspiro.tidal:id/miniControlsView"]')
             if play_button.exists:
                 play_button.click()
                 logger.info("Clicked Tidal play/pause button")
@@ -362,7 +362,7 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
                 return True
 
             # 2. If prepared, try the UI next button.
-            next_button = self.device.xpath('//*[@resource-id="com.aspiro.tidal:id/next_button"]')
+            next_button = self.device.xpath('//*[@resource-id="com.aspiro.tidal:id/next"]')
             if next_button.exists:
                 next_button.click()
                 logger.info("Clicked next track button")
@@ -404,7 +404,7 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
                 return True
 
             # Try the UI previous button.
-            prev_button = self.device.xpath('//*[@resource-id="com.aspiro.tidal:id/previous_button"]')
+            prev_button = self.device.xpath('//*[@resource-id="com.aspiro.tidal:id/previous"]')
             if prev_button.exists:
                 prev_button.click()
                 logger.info("Tidal: Clicked previous track button")
@@ -445,7 +445,7 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
 
             # 2. Try to click the 'like' button if it exists.
             # Note: Tidal-specific resource ID for the like button
-            like_button = self.device.xpath('//*[@resource-id="com.aspiro.tidal:id/like_button"]')
+            like_button = self.device.xpath('//*[@resource-id="com.aspiro.tidal:id/favoriteButton"]')
             if not like_button.exists:
                 logger.error("Like button not found in Tidal.")
                 return False
