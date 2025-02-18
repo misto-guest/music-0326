@@ -559,8 +559,9 @@ class MultiMusicAutomation(MutexMixin):
 
         return status
 
+    @with_device_lock
     def _safe_app_switch(self, from_app: str, to_app: str) -> bool:
-        """Safely switch between apps."""
+        """Safely switch between apps with sequential locking."""
         try:
             logger.info(f"Switching from {from_app} to {to_app}")
 
@@ -580,13 +581,14 @@ class MultiMusicAutomation(MutexMixin):
                 return False
 
             # Give a small delay between actions
-            time.sleep(2)
+            time.sleep(3)  # Increased from 2 to 3 seconds
 
             # Bring app to foreground and verify
-            if not controller.prepare_for_action():
-                return False
+            success = controller.prepare_for_action()
+            if success:
+                time.sleep(2)  # Additional stabilization delay
 
-            return True
+            return success
 
         except Exception as e:
             logger.error(f"Error switching apps: {e}")
