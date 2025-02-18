@@ -54,6 +54,19 @@ class AmazonMusicConfig:
     APP_NAME = "Amazon Music"
     MAIN_ACTIVITY = "com.amazon.mp3.activity.MainActivity"
 
+class TidalMusicConfig:
+    """Configuration constants for Tidal Music app."""
+
+    PACKAGE_NAME = "com.aspiro.tidal"
+    APP_NAME = "Tidal"
+    MAIN_ACTIVITY = "com.aspiro.tidal.MainActivity"
+
+    # UI Element Resource IDs
+    PLAY_PAUSE_BUTTON = "com.aspiro.tidal:id/miniControlsView"
+    NEXT_BUTTON = "com.aspiro.tidal:id/next"
+    PREV_BUTTON = "com.aspiro.tidal:id/previous"
+    SHUFFLE_BUTTON = "com.aspiro.tidal:id/playbackControlButtonSecond"
+    LIKE_BUTTON = "com.aspiro.tidal:id/favoriteButton"
 
 class IsoClipboardConfig:
     """Configuration for IsoClipboard app."""
