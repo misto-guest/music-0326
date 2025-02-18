@@ -55,7 +55,6 @@ class MultiMusicAutomation(MutexMixin):
                     time.sleep(1)
                     continue
 
-                # Get next action from queue with timeout
                 try:
                     action = self.action_queue.get(timeout=1)
                 except Empty:
@@ -66,7 +65,6 @@ class MultiMusicAutomation(MutexMixin):
                     with self.action_lock:
                         logger.info(f"Processing {app_name} {action_name}")
 
-                        # Execute action
                         if func():
                             logger.info(f"{app_name} {action_name} successful")
 
@@ -78,11 +76,10 @@ class MultiMusicAutomation(MutexMixin):
                             elif app_name == 'amazon_music':
                                 self.amazon_controller.device.press("home")
 
-                            # Add longer delay to let music play
-                            time.sleep(random.randint(20, 30))  # 20-30 seconds between actions
+                            time.sleep(random.randint(20, 30))
                         else:
                             logger.error(f"{app_name} {action_name} failed")
-                            time.sleep(5)  # Shorter delay if action failed
+                            time.sleep(5)
 
                     self.action_queue.task_done()
 
@@ -167,6 +164,25 @@ class MultiMusicAutomation(MutexMixin):
         logger.info(f"Next {app_name} IsoClipboard in {minutes}m {seconds}s (at {next_time})")
         return total_seconds
 
+    def get_music_action_delay(self, app_type: str) -> int:
+        if app_type == "youtube":
+            minutes = random.randint(0, 6)
+            seconds = random.randint(45, 59) if minutes == 0 else random.randint(0, 59)
+            app_name = "YouTube Music"
+        elif app_type == "apple":
+            minutes = random.randint(1, 7)
+            seconds = random.randint(42, 59) if minutes == 0 else random.randint(0, 59)
+            app_name = "Apple Music"
+        else:
+            minutes = random.randint(0, 5)
+            seconds = random.randint(50, 59) if minutes == 0 else random.randint(0, 59)
+            app_name = "Amazon Music"
+
+        total_seconds = minutes * 60 + seconds
+        next_time = time.strftime('%H:%M:%S', time.localtime(time.time() + total_seconds))
+        logger.info(f"Next {app_name} action in {minutes}m {seconds}s (at {next_time})")
+        return total_seconds
+
     @with_device_lock
     def _check_safe_to_act(self) -> bool:
         """Check if enough time has passed since last action. Uses device lock as it checks all apps."""
@@ -197,7 +213,7 @@ class MultiMusicAutomation(MutexMixin):
         return True
 
     def _youtube_loop(self):
-        """YouTube loop using action queue."""
+        """YouTube loop using action queue with music action delay."""
         while self.running and self.youtube_controller:
             try:
                 if self.paused:
@@ -206,92 +222,127 @@ class MultiMusicAutomation(MutexMixin):
 
                 now = time.time()
 
-                # Handle IsoClipboard
+                # Handle IsoClipboard if it's time
                 if now >= self.next_iso_youtube:
                     self._add_action(
                         'youtube_music',
                         self.youtube_controller.handle_isoclipboard,
                         'IsoClipboard'
                     )
+                    self.action_queue.join()  # Wait for IsoClipboard action to complete
                     self.next_iso_youtube = time.time() + self.get_isoclipboard_delay("youtube")
                     continue
 
-                # Handle regular actions with proper delays
+                # Check if it is safe to perform a new cluster of actions
                 if self._check_safe_to_act():
                     actions = self._get_action_cluster(self.youtube_controller, "youtube")
 
-                    # Queue first action
+                    # Process the first action in the cluster immediately
                     first_action = actions[0]
                     self._add_action('youtube_music', first_action[0], first_action[1])
+                    self.action_queue.join()  # Wait for first action to complete
 
-                    # Wait for proper delay before queuing rest of cluster
-                    delay = self._get_human_delay(is_cluster=True if len(actions) > 1 else False)
-                    time.sleep(delay)
+                    # Process any subsequent actions in the cluster with a short human-like delay
+                    for action in actions[1:]:
+                        intra_cluster_delay = self._get_human_delay(is_cluster=True)
+                        time.sleep(intra_cluster_delay)
+                        self._add_action('youtube_music', action[0], action[1])
+                        self.action_queue.join()  # Wait for each action to complete
 
-                time.sleep(random.randint(30, 60))  # Base delay between clusters
+                # Instead of sleeping a random 30-60 seconds, use get_music_action_delay
+                delay = self.get_music_action_delay("youtube")
+                time.sleep(delay)
 
             except Exception as e:
                 logger.error(f"Error in YouTube loop: {e}")
                 time.sleep(60)
 
     def _apple_loop(self):
-        """Apple Music loop using action queue."""
+        """Apple Music loop using action queue with music action delay."""
         while self.running and self.apple_controller:
             try:
                 if self.paused:
                     time.sleep(300)
                     continue
+
                 now = time.time()
-                # Handle IsoClipboard
+
+                # Handle IsoClipboard if it's time
                 if now >= self.next_iso_apple:
                     self._add_action(
                         'apple_music',
                         self.apple_controller.handle_isoclipboard,
                         'IsoClipboard'
                     )
+                    self.action_queue.join()  # Wait for IsoClipboard action to complete
                     self.next_iso_apple = time.time() + self.get_isoclipboard_delay("apple")
                     continue
-                # Handle regular actions with proper delays
+
+                # Check if it's safe to perform a new cluster of actions
                 if self._check_safe_to_act():
                     actions = self._get_action_cluster(self.apple_controller, "apple")
-                    # Queue first action
+
+                    # Process the first action in the cluster immediately
                     first_action = actions[0]
                     self._add_action('apple_music', first_action[0], first_action[1])
-                    # Wait for proper delay before queuing rest of cluster
-                    delay = self._get_human_delay(is_cluster=True if len(actions) > 1 else False)
-                    time.sleep(delay)
-                time.sleep(random.randint(30, 60))  # Base delay between clusters
+                    self.action_queue.join()  # Wait for first action to complete
+
+                    # Process any subsequent actions in the cluster with a short human-like delay
+                    for action in actions[1:]:
+                        intra_cluster_delay = self._get_human_delay(is_cluster=True)
+                        time.sleep(intra_cluster_delay)
+                        self._add_action('apple_music', action[0], action[1])
+                        self.action_queue.join()  # Wait for each action to complete
+
+                # Instead of a fixed sleep, use get_music_action_delay to determine the wait time
+                delay = self.get_music_action_delay("apple")
+                time.sleep(delay)
+
             except Exception as e:
                 logger.error(f"Error in Apple loop: {e}")
                 time.sleep(60)
 
     def _amazon_loop(self):
-        """Amazon Music loop using action queue."""
+        """Amazon Music loop using action queue with music action delay."""
         while self.running and self.amazon_controller:
             try:
                 if self.paused:
                     time.sleep(300)
                     continue
+
                 now = time.time()
-                # Handle IsoClipboard
+
+                # Handle IsoClipboard if it's time
                 if now >= self.next_iso_amazon:
                     self._add_action(
                         'amazon_music',
                         self.amazon_controller.handle_isoclipboard,
                         'IsoClipboard'
                     )
+                    self.action_queue.join()  # Wait for IsoClipboard action to complete
                     self.next_iso_amazon = time.time() + self.get_isoclipboard_delay("amazon")
                     continue
-                # Handle regular actions with proper delays
+
+                # Check if it's safe to perform a new cluster of actions
                 if self._check_safe_to_act():
                     actions = self._get_action_cluster(self.amazon_controller, "amazon")
-                    # Queue first action
+
+                    # Process the first action in the cluster immediately
                     first_action = actions[0]
                     self._add_action('amazon_music', first_action[0], first_action[1])
-                    # Wait for proper delay before queuing rest of cluster
-                    delay = self._get_human_delay(is_cluster=True if len(actions) > 1 else False)
-                    time.sleep(delay)
-                time.sleep(random.randint(30, 60))  # Base delay between clusters
+                    self.action_queue.join()  # Wait for first action to complete
+
+                    # Process any subsequent actions in the cluster with a short human-like delay
+                    for action in actions[1:]:
+                        intra_cluster_delay = self._get_human_delay(is_cluster=True)
+                        time.sleep(intra_cluster_delay)
+                        self._add_action('amazon_music', action[0], action[1])
+                        self.action_queue.join()  # Wait for each action to complete
+
+                # Use the custom delay function to determine the wait time before the next cluster
+                delay = self.get_music_action_delay("amazon")
+                time.sleep(delay)
+
             except Exception as e:
                 logger.error(f"Error in Amazon loop: {e}")
                 time.sleep(60)
