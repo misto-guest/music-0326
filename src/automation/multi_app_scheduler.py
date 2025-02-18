@@ -2,6 +2,7 @@
 
 import random
 import threading
+from queue import Queue, Empty
 import time
 from typing import Optional, Dict, Tuple, Callable, List, Union
 from src.utils.logging_utils import setup_logger
@@ -28,6 +29,11 @@ class MultiMusicAutomation(MutexMixin):
         self.running = False
         self.paused = False
 
+        # Add action queue
+        self.action_queue = Queue()
+        self.action_lock = threading.Lock()
+        self.action_thread = None
+
         # Thread storage
         self.youtube_thread: Optional[threading.Thread] = None
         self.apple_thread: Optional[threading.Thread] = None
@@ -40,6 +46,48 @@ class MultiMusicAutomation(MutexMixin):
         self.last_youtube_action = 0.0
         self.last_apple_action = 0.0
         self.last_amazon_action = 0.0
+
+    def _process_actions(self):
+        """Process queued actions sequentially."""
+        while self.running:
+            try:
+                if self.paused:
+                    time.sleep(1)
+                    continue
+
+                # Get next action from queue with timeout
+                try:
+                    action = self.action_queue.get(timeout=1)
+                except Empty:
+                    continue
+
+                if action:
+                    app_name, func, action_name = action
+                    with self.action_lock:
+                        logger.info(f"Processing {app_name} {action_name}")
+
+                        # Execute action
+                        if func():
+                            logger.info(f"{app_name} {action_name} successful")
+
+                            # Minimize app after successful action
+                            if app_name == 'youtube_music':
+                                self.youtube_controller.device.press("home")
+                            elif app_name == 'apple_music':
+                                self.apple_controller.device.press("home")
+                            elif app_name == 'amazon_music':
+                                self.amazon_controller.device.press("home")
+
+                            time.sleep(1)  # Small delay after minimize
+                        else:
+                            logger.error(f"{app_name} {action_name} failed")
+
+                        time.sleep(2)  # Delay before next action
+                    self.action_queue.task_done()
+
+            except Exception as e:
+                logger.error(f"Error processing action: {e}")
+                time.sleep(1)
 
     def _get_action_cluster(self,
                             controller: Union[YouTubeMusicController, AppleMusicController, AmazonMusicController],
@@ -136,8 +184,19 @@ class MultiMusicAutomation(MutexMixin):
             return (now - most_recent) >= 10
         return True
 
+    @with_device_lock
+    def _add_action(self, app_name: str, func: Callable, action_name: str):
+        """Add action to queue."""
+        try:
+            self.action_queue.put((app_name, func, action_name))
+            logger.debug(f"Queued {app_name} {action_name}")
+        except Exception as e:
+            logger.error(f"Error adding action to queue: {e}")
+            return False
+        return True
+
     def _youtube_loop(self):
-        """YouTube loop with safe app switching."""
+        """YouTube loop using action queue."""
         while self.running and self.youtube_controller:
             try:
                 if self.paused:
@@ -148,40 +207,29 @@ class MultiMusicAutomation(MutexMixin):
 
                 # Handle IsoClipboard
                 if now >= self.next_iso_youtube:
-                    if self._safe_app_switch('', 'youtube_music'):  # Empty string for initial switch
-                        logger.info("Performing YouTube Music IsoClipboard")
-                        success = self.youtube_controller.handle_isoclipboard()
-                        if success:
-                            self.youtube_controller.device.press("home")
-                            logger.info("YouTube Music IsoClipboard successful")
-                        delay = self.get_isoclipboard_delay("youtube")
-                        self.next_iso_youtube = time.time() + delay
-                        time.sleep(random.randint(5, 15))
-                        continue
+                    self._add_action(
+                        'youtube_music',
+                        self.youtube_controller.handle_isoclipboard,
+                        'IsoClipboard'
+                    )
+                    self.next_iso_youtube = time.time() + self.get_isoclipboard_delay("youtube")
+                    continue
 
                 # Handle regular actions
                 if self._check_safe_to_act():
-                    if self._safe_app_switch('', 'youtube_music'):
-                        actions = self._get_action_cluster(self.youtube_controller, "youtube")
+                    actions = self._get_action_cluster(self.youtube_controller, "youtube")
+                    for action, action_name in actions:
+                        self._add_action('youtube_music', action, action_name)
 
-                        for action, action_name in actions:
-                            if action():
-                                self.last_youtube_action = time.time()
-                                self.youtube_controller.device.press("home")
-                                logger.info(f"YouTube Music {action_name} successful")
-
-                                if len(actions) > 1:
-                                    time.sleep(self._get_human_delay(is_cluster=True))
-
-                    delay = self._get_human_delay(is_cluster=False)
-                    time.sleep(delay)
+                delay = self._get_human_delay(is_cluster=False)
+                time.sleep(delay)
 
             except Exception as e:
                 logger.error(f"Error in YouTube loop: {e}")
                 time.sleep(60)
 
     def _apple_loop(self):
-        """Apple Music loop with safe app switching."""
+        """Apple Music loop using action queue."""
         while self.running and self.apple_controller:
             try:
                 if self.paused:
@@ -192,40 +240,29 @@ class MultiMusicAutomation(MutexMixin):
 
                 # Handle IsoClipboard
                 if now >= self.next_iso_apple:
-                    if self._safe_app_switch('', 'apple_music'):
-                        logger.info("Performing Apple Music IsoClipboard")
-                        success = self.apple_controller.handle_isoclipboard()
-                        if success:
-                            self.apple_controller.device.press("home")
-                            logger.info("Apple Music IsoClipboard successful")
-                        delay = self.get_isoclipboard_delay("apple")
-                        self.next_iso_apple = time.time() + delay
-                        time.sleep(random.randint(5, 15))
-                        continue
+                    self._add_action(
+                        'apple_music',
+                        self.apple_controller.handle_isoclipboard,
+                        'IsoClipboard'
+                    )
+                    self.next_iso_apple = time.time() + self.get_isoclipboard_delay("apple")
+                    continue
 
                 # Handle regular actions
                 if self._check_safe_to_act():
-                    if self._safe_app_switch('', 'apple_music'):
-                        actions = self._get_action_cluster(self.apple_controller, "apple")
+                    actions = self._get_action_cluster(self.apple_controller, "apple")
+                    for action, action_name in actions:
+                        self._add_action('apple_music', action, action_name)
 
-                        for action, action_name in actions:
-                            if action():
-                                self.last_apple_action = time.time()
-                                self.apple_controller.device.press("home")
-                                logger.info(f"Apple Music {action_name} successful")
-
-                                if len(actions) > 1:
-                                    time.sleep(self._get_human_delay(is_cluster=True))
-
-                    delay = self._get_human_delay(is_cluster=False)
-                    time.sleep(delay)
+                delay = self._get_human_delay(is_cluster=False)
+                time.sleep(delay)
 
             except Exception as e:
                 logger.error(f"Error in Apple loop: {e}")
                 time.sleep(60)
 
     def _amazon_loop(self):
-        """Amazon Music loop with safe app switching."""
+        """Amazon Music loop using action queue."""
         while self.running and self.amazon_controller:
             try:
                 if self.paused:
@@ -236,33 +273,22 @@ class MultiMusicAutomation(MutexMixin):
 
                 # Handle IsoClipboard
                 if now >= self.next_iso_amazon:
-                    if self._safe_app_switch('', 'amazon_music'):
-                        logger.info("Performing Amazon Music IsoClipboard")
-                        success = self.amazon_controller.handle_isoclipboard()
-                        if success:
-                            self.amazon_controller.device.press("home")
-                            logger.info("Amazon Music IsoClipboard successful")
-                        delay = self.get_isoclipboard_delay("amazon")
-                        self.next_iso_amazon = time.time() + delay
-                        time.sleep(random.randint(5, 15))
-                        continue
+                    self._add_action(
+                        'amazon_music',
+                        self.amazon_controller.handle_isoclipboard,
+                        'IsoClipboard'
+                    )
+                    self.next_iso_amazon = time.time() + self.get_isoclipboard_delay("amazon")
+                    continue
 
                 # Handle regular actions
                 if self._check_safe_to_act():
-                    if self._safe_app_switch('', 'amazon_music'):
-                        actions = self._get_action_cluster(self.amazon_controller, "amazon")
+                    actions = self._get_action_cluster(self.amazon_controller, "amazon")
+                    for action, action_name in actions:
+                        self._add_action('amazon_music', action, action_name)
 
-                        for action, action_name in actions:
-                            if action():
-                                self.last_amazon_action = time.time()
-                                self.amazon_controller.device.press("home")
-                                logger.info(f"Amazon Music {action_name} successful")
-
-                                if len(actions) > 1:
-                                    time.sleep(self._get_human_delay(is_cluster=True))
-
-                    delay = self._get_human_delay(is_cluster=False)
-                    time.sleep(delay)
+                delay = self._get_human_delay(is_cluster=False)
+                time.sleep(delay)
 
             except Exception as e:
                 logger.error(f"Error in Amazon loop: {e}")
@@ -358,9 +384,16 @@ class MultiMusicAutomation(MutexMixin):
         if self.amazon_controller and not self._amazon_initial_setup():
             return False
 
-        now = time.time()
+        # Set running flag before starting threads
         self.running = True
+        now = time.time()
 
+        # Start action processing thread first
+        self.action_thread = threading.Thread(target=self._process_actions, daemon=True)
+        self.action_thread.start()
+        logger.info("Started action processing thread")
+
+        # Then start individual app threads
         if self.youtube_controller:
             self.next_iso_youtube = now + self.get_isoclipboard_delay("youtube")
             self.last_youtube_action = now
@@ -558,53 +591,3 @@ class MultiMusicAutomation(MutexMixin):
                                                           time.localtime(self.next_iso_amazon))
 
         return status
-
-    @with_device_lock
-    def _safe_app_switch(self, from_app: str, to_app: str) -> bool:
-        """Safely switch between apps with strict ordering."""
-        try:
-            logger.info(f"Starting app switch from {from_app} to {to_app}")
-
-            # Get the right controller based on app name
-            if to_app == 'youtube_music':
-                controller = self.youtube_controller
-            elif to_app == 'apple_music':
-                controller = self.apple_controller
-            elif to_app == 'amazon_music':
-                controller = self.amazon_controller
-            else:
-                logger.error(f"Unknown app: {to_app}")
-                return False
-
-            if not controller:
-                logger.error(f"No controller found for {to_app}")
-                return False
-
-            # Initial delay before starting switch
-            time.sleep(3)
-
-            # Press home first to clear state
-            controller.device.press("home")
-            time.sleep(2)
-
-            # Try to bring app to foreground
-            if not controller.prepare_for_action():
-                logger.warning(f"First attempt to prepare {to_app} failed, retrying...")
-                time.sleep(2)
-                if not controller.prepare_for_action():
-                    return False
-
-            # Verify app is in foreground
-            current_app = controller.device.app_current().get('package', '')
-            if controller.package_name not in current_app:
-                logger.warning(f"{to_app} not in foreground, waiting...")
-                time.sleep(2)
-                return False
-
-            # Additional stabilization delay
-            time.sleep(2)
-            return True
-
-        except Exception as e:
-            logger.error(f"Error switching apps: {e}")
-            return False
