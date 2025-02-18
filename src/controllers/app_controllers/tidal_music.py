@@ -33,6 +33,9 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
         if not self.setup_screen_settings():
             logger.warning("Failed to set up screen settings during initialization")
 
+        # Optionally, capture initial rotation state for later restoration (only at session end)
+        self.initial_rotation_state = self.get_rotation_settings()
+
     def __del__(self):
         """Cleanup when controller is deleted."""
         try:
@@ -68,7 +71,7 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def _force_disable_rotation(self) -> bool:
-        """Force disable rotation with verification (using the same logic as Amazon Music)."""
+        """Force disable rotation with verification."""
         try:
             for _ in range(3):
                 self.device.shell('settings put system accelerometer_rotation 0')
@@ -95,7 +98,7 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def _restore_rotation_state(self, initial_state: dict) -> None:
-        """Restore rotation to initial state."""
+        """Restore rotation to initial state (used only at session end)."""
         try:
             if 'auto_rotate' in initial_state:
                 self.device.shell(f'settings put system accelerometer_rotation {initial_state["auto_rotate"]}')
@@ -123,11 +126,8 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
 
     def handle_isoclipboard(self) -> bool:
         """Handle IsoClipboard automation for Tidal."""
-        initial_rotation_state = None
         try:
-            initial_rotation_state = self.get_rotation_settings()
-            logger.info(f"Initial rotation settings: {initial_rotation_state}")
-
+            logger.info(f"Initial rotation settings: {self.get_rotation_settings()}")
             if not self._force_disable_rotation():
                 logger.error("Failed to disable rotation")
                 return False
@@ -142,11 +142,9 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
                 else:
                     return False
 
-            # Handle fetch operation
             if not self._handle_fetch_operation():
                 return False
 
-            # Check for Tidal restart
             if self.needs_restart("Tidal Music"):
                 logger.info("Restarting Tidal after force-close")
                 self.clear_restart_flag("Tidal Music")
@@ -157,7 +155,6 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
             if not self._handle_shuffle_and_play():
                 return False
 
-            # Optionally ensure correct mini-player state
             self._ensure_mini_player()
             time.sleep(2)
 
@@ -168,9 +165,6 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
         except Exception as e:
             logger.error(f"Error with IsoClipboard: {e}")
             return False
-        finally:
-            if initial_rotation_state:
-                self._restore_rotation_state(initial_rotation_state)
 
     def _start_isoclipboard_safely(self) -> bool:
         """Start IsoClipboard app with timing and safety checks."""
@@ -463,7 +457,7 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def stop_app(self) -> bool:
-        """Stop Tidal app and restore rotation state if appropriate."""
+        """Stop Tidal app and restore rotation state if desired at session end."""
         try:
             self.device.app_stop(self.package_name)
             time.sleep(1)
@@ -471,9 +465,8 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
                 logger.warning("App still running after stop attempt, trying force-stop")
                 return self.force_stop()
 
-            # Restore rotation state (if needed)
-            initial_state = self.get_rotation_settings()
-            self._restore_rotation_state(initial_state)
+            if self.initial_rotation_state:
+                self._restore_rotation_state(self.initial_rotation_state)
             logger.info("Restored rotation state after stopping Tidal.")
             return True
         except Exception as e:
@@ -481,44 +474,34 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def start_app(self) -> bool:
-        """Start Tidal app with optimized timing."""
-        initial_state = None
+        """Start Tidal app using am start command without restoring rotation immediately."""
         try:
             logger.info("Starting Tidal...")
-            initial_state = self.get_rotation_settings()
-
             if not self._force_disable_rotation():
                 return False
 
-            logger.info("Attempting start with monkey command...")
-            self.device.shell(f'monkey -p {self.package_name} -c android.intent.category.LAUNCHER 1')
+            logger.info("Attempting start with am start command...")
+            self.device.shell(
+                f'am start -W -n {self.package_name}/com.aspiro.wamp.LoginFragmentActivity --activity-single-top'
+            )
             time.sleep(2)
 
             if self._verify_app_running():
-                logger.info("Tidal started successfully with monkey command")
+                logger.info("Tidal started successfully with am start command")
                 return True
 
-            logger.info("Monkey command failed, trying activity manager...")
-            self.device.shell(f'am start -W -n {self.package_name}/com.aspiro.tidal.MainActivity --activity-single-top')
-            time.sleep(2)
+            logger.info("am start command did not launch Tidal properly, retrying...")
+            time.sleep(1)
+            if self._verify_app_running():
+                logger.info("Tidal started successfully after retry")
+                return True
 
-            if not self._verify_app_running():
-                time.sleep(1)
-                if self._verify_app_running():
-                    logger.info("Tidal started successfully after retry")
-                    return True
-                logger.error("Failed to start Tidal")
-                return False
-
-            logger.info("Tidal started successfully")
-            return True
+            logger.error("Failed to start Tidal")
+            return False
 
         except Exception as e:
             logger.error(f"Error starting Tidal: {e}")
             return False
-        finally:
-            if initial_state:
-                self._restore_rotation_state(initial_state)
 
     def is_running(self) -> bool:
         """Check if Tidal is running with improved detection."""
