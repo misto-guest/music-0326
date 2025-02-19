@@ -69,14 +69,19 @@ class MultiMusicAutomation(MutexMixin):
                         logger.info(f"Processing {app_name} {action_name}")
                         if func():
                             logger.info(f"{app_name} {action_name} successful")
-                            # Minimize app after successful action
+                            now = time.time()
+                            # Update last action timestamp and minimize the app after success
                             if app_name == 'youtube_music':
+                                self.last_youtube_action = now
                                 self.youtube_controller.device.press("home")
                             elif app_name == 'apple_music':
+                                self.last_apple_action = now
                                 self.apple_controller.device.press("home")
                             elif app_name == 'amazon_music':
+                                self.last_amazon_action = now
                                 self.amazon_controller.device.press("home")
                             elif app_name == 'tidal_music':
+                                self.last_tidal_action = now
                                 self.tidal_controller.device.press("home")
                             time.sleep(random.randint(20, 30))
                         else:
