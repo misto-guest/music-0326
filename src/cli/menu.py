@@ -318,27 +318,46 @@ class CLI:
             self.automation = None
             return False
 
-    def start_all_automation(self) -> bool:
-        """Start automation for all apps."""
-        try:
-            if not self.automation:
-                logger.info("Initializing all music apps automation...")
-                self.automation = MultiMusicAutomation(
-                    youtube_controller=self.controller.app_controllers['youtube_music'],
-                    apple_controller=self.controller.app_controllers['apple_music'],
-                    amazon_controller=self.controller.app_controllers['amazon_music'],
-                    tidal_controller=self.controller.app_controllers['tidal_music']
-                )
-            success = self.automation.start_automation()
-            if success:
-                logger.info("All music apps automation started successfully")
-                return True
-            else:
-                logger.error("Failed to start all music apps automation")
-                self.automation = None
-                return False
-        except Exception as e:
-            logger.error(f"Failed to start all music apps automation: {e}")
+    def start_all_automation(self, *args) -> bool:
+        """
+        Start automation for all apps with optional exclusions.
+        Example usage:
+            sall                -> starts all apps
+            sall --exclude tidal          -> exclude Tidal Music
+            sall --exclude -tidal -amazon  -> exclude Tidal and Amazon Music
+        """
+        exclusions = set()
+        if args:
+            # Look for '--exclude' flag and collect subsequent tokens as exclusions.
+            if args[0] == '--exclude':
+                for token in args[1:]:
+                    token_clean = token.lstrip('-').lower()  # remove any leading dashes and normalize
+                    exclusions.add(token_clean)
+
+        # Map exclusions to controllers (adjust token names as desired)
+        yt_controller = None if 'youtube' in exclusions or 'ytm' in exclusions else self.controller.app_controllers.get(
+            'youtube_music')
+        apple_controller = None if 'apple' in exclusions else self.controller.app_controllers.get('apple_music')
+        amazon_controller = None if 'amazon' in exclusions else self.controller.app_controllers.get('amazon_music')
+        tidal_controller = None if 'tidal' in exclusions else self.controller.app_controllers.get('tidal_music')
+
+        logger.info(f"Starting automation with exclusions: {exclusions}")
+
+        # Initialize automation with the filtered controllers.
+        if not self.automation:
+            logger.info("Initializing all music apps automation...")
+            self.automation = MultiMusicAutomation(
+                youtube_controller=yt_controller,
+                apple_controller=apple_controller,
+                amazon_controller=amazon_controller,
+                tidal_controller=tidal_controller
+            )
+        success = self.automation.start_automation()
+        if success:
+            logger.info("All music apps automation started successfully")
+            return True
+        else:
+            logger.error("Failed to start all music apps automation")
             self.automation = None
             return False
 
@@ -505,18 +524,19 @@ class CLI:
                 continue
 
     def handle_command(self, command: str) -> bool:
-        """Handle user input command."""
-        if command not in self.commands:
+        parts = command.split()
+        if not parts:
+            return True
+        cmd = parts[0]
+        args = parts[1:]
+        if cmd not in self.commands:
             logger.warning(f"Unknown command: {command}")
             return True
 
-        description, func = self.commands[command]
-        if func is None:  # Quit command
-            return False
-
+        description, func = self.commands[cmd]
+        logger.info(f"Executing: {description}")
         try:
-            logger.info(f"Executing: {description}")
-            result = func()
+            result = func(*args) if args else func()
             if isinstance(result, bool) and not result:
                 logger.error(f"Failed to execute: {description}")
             return True
