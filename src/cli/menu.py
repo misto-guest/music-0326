@@ -322,26 +322,36 @@ class CLI:
         """
         Start automation for all apps with optional exclusions.
         Example usage:
-            sall                -> starts all apps
+            sall                          -> starts all apps
             sall --exclude tidal          -> exclude Tidal Music
-            sall --exclude -tidal -amazon  -> exclude Tidal and Amazon Music
+            sall --exclude -tidal -amazon -> exclude Tidal and Amazon Music
         """
+        # If help flag is provided, print usage instructions.
+        if args and args[0] in ['-h', '--help']:
+            print(self.start_all_automation.__doc__)
+            return True
+
         exclusions = set()
         if args:
-            # Look for '--exclude' flag and collect subsequent tokens as exclusions.
-            if args[0] == '--exclude':
-                for token in args[1:]:
-                    token_clean = token.lstrip('-').lower()  # remove any leading dashes and normalize
-                    exclusions.add(token_clean)
+            # Validate that the first argument is exactly '--exclude'
+            if args[0] != '--exclude':
+                print(f"Error: unrecognized option: {args[0]}")
+                print(self.start_all_automation.__doc__)
+                return False
 
-        # Map exclusions to controllers (adjust token names as desired)
+            # Process exclusion tokens
+            for token in args[1:]:
+                token_clean = token.lstrip('-').lower()  # Normalize token
+                exclusions.add(token_clean)
+
+        logger.info(f"Starting automation with exclusions: {exclusions}")
+
+        # Map exclusions to controllers (adjust token names as needed)
         yt_controller = None if 'youtube' in exclusions or 'ytm' in exclusions else self.controller.app_controllers.get(
             'youtube_music')
         apple_controller = None if 'apple' in exclusions else self.controller.app_controllers.get('apple_music')
         amazon_controller = None if 'amazon' in exclusions else self.controller.app_controllers.get('amazon_music')
         tidal_controller = None if 'tidal' in exclusions else self.controller.app_controllers.get('tidal_music')
-
-        logger.info(f"Starting automation with exclusions: {exclusions}")
 
         # Initialize automation with the filtered controllers.
         if not self.automation:
