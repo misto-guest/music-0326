@@ -60,13 +60,36 @@ class CLI:
             'm5': ('Amazon Music: Like Current Song',
                    lambda: self.controller.app_controllers['amazon_music'].like_current_song()),
 
+            # Tidal Music Controls
+            't1': ('Tidal Music: Play/Pause',
+                   lambda: self.controller.app_controllers['tidal_music'].play_pause()),
+            't2': ('Tidal Music: Next Track',
+                   lambda: self.controller.app_controllers['tidal_music'].next_track()),
+            't3': ('Tidal Music: Previous Track',
+                   lambda: self.controller.app_controllers['tidal_music'].previous_track()),
+            't4': ('Tidal Music: IsoClipboard',
+                   lambda: self.controller.app_controllers['tidal_music'].handle_isoclipboard()),
+            't5': ('Tidal Music: Like Current Song',
+                   lambda: self.controller.app_controllers['tidal_music'].like_current_song()),
+
+            # Single App Automation
             'sy': ('Start YouTube Music Only', self.start_youtube_automation),
             'sa': ('Start Apple Music Only', self.start_apple_automation),
             'sm': ('Start Amazon Music Only', self.start_amazon_automation),
+            'st': ('Start Tidal Music Only', self.start_tidal_automation),
+
+            # Dual App Automation
             'sya': ('Start YouTube & Apple Music', self.start_youtube_apple_automation),
             'sym': ('Start YouTube & Amazon Music', self.start_youtube_amazon_automation),
+            'syt': ('Start YouTube & Tidal Music', self.start_youtube_tidal_automation),
             'sam': ('Start Apple & Amazon Music', self.start_apple_amazon_automation),
+            'sat': ('Start Apple & Tidal Music', self.start_apple_tidal_automation),
+            'smt': ('Start Amazon & Tidal Music', self.start_amazon_tidal_automation),
+
+            # All Apps Automation
             'sall': ('Start All Apps', self.start_all_automation),
+
+            # Automation Controls
             'stop': ('Stop Automation', self.stop_automation),
             'pause': ('Pause Automation', self.pause_automation),
             'resume': ('Resume Automation', self.resume_automation),
@@ -78,6 +101,94 @@ class CLI:
             'q': ('Quit', None)
         }
 
+    def start_tidal_automation(self) -> bool:
+        """Start Tidal Music automation only."""
+        try:
+            if not self.automation:
+                logger.info("Initializing Tidal Music automation...")
+                self.automation = MultiMusicAutomation(
+                    tidal_controller=self.controller.app_controllers['tidal_music']
+                )
+            success = self.automation.start_tidal_only()
+            if success:
+                logger.info("Tidal Music automation started successfully")
+                return True
+            else:
+                logger.error("Failed to start Tidal Music automation")
+                self.automation = None
+                return False
+        except Exception as e:
+            logger.error(f"Failed to start Tidal Music automation: {e}")
+            self.automation = None
+            return False
+
+    def start_youtube_tidal_automation(self) -> bool:
+        """Start automation for YouTube Music and Tidal Music."""
+        try:
+            if not self.automation:
+                logger.info("Initializing YouTube & Tidal Music automation...")
+                self.automation = MultiMusicAutomation(
+                    youtube_controller=self.controller.app_controllers['youtube_music'],
+                    tidal_controller=self.controller.app_controllers['tidal_music']
+                )
+            success = self.automation.start_automation()
+            if success:
+                logger.info("YouTube & Tidal Music automation started successfully")
+                return True
+            else:
+                logger.error("Failed to start YouTube & Tidal Music automation")
+                self.automation = None
+                return False
+        except Exception as e:
+            logger.error(f"Failed to start YouTube & Tidal Music automation: {e}")
+            self.automation = None
+            return False
+
+    def start_apple_tidal_automation(self) -> bool:
+        """Start automation for Apple Music and Tidal Music."""
+        try:
+            if not self.automation:
+                logger.info("Initializing Apple & Tidal Music automation...")
+                self.automation = MultiMusicAutomation(
+                    apple_controller=self.controller.app_controllers['apple_music'],
+                    tidal_controller=self.controller.app_controllers['tidal_music']
+                )
+            success = self.automation.start_automation()
+            if success:
+                logger.info("Apple & Tidal Music automation started successfully")
+                return True
+            else:
+                logger.error("Failed to start Apple & Tidal Music automation")
+                self.automation = None
+                return False
+        except Exception as e:
+            logger.error(f"Failed to start Apple & Tidal Music automation: {e}")
+            self.automation = None
+            return False
+
+    def start_amazon_tidal_automation(self) -> bool:
+        """Start automation for Amazon Music and Tidal Music."""
+        try:
+            if not self.automation:
+                logger.info("Initializing Amazon & Tidal Music automation...")
+                self.automation = MultiMusicAutomation(
+                    amazon_controller=self.controller.app_controllers['amazon_music'],
+                    tidal_controller=self.controller.app_controllers['tidal_music']
+                )
+            success = self.automation.start_automation()
+            if success:
+                logger.info("Amazon & Tidal Music automation started successfully")
+                return True
+            else:
+                logger.error("Failed to start Amazon & Tidal Music automation")
+                self.automation = None
+                return False
+        except Exception as e:
+            logger.error(f"Failed to start Amazon & Tidal Music automation: {e}")
+            self.automation = None
+            return False
+
+    # Existing methods remain unchanged
     def start_youtube_automation(self) -> bool:
         """Start YouTube Music automation only."""
         try:
@@ -207,25 +318,46 @@ class CLI:
             self.automation = None
             return False
 
-    def start_all_automation(self) -> bool:
-        try:
-            if not self.automation:
-                logger.info("Initializing all music apps automation...")
-                self.automation = MultiMusicAutomation(
-                    youtube_controller=self.controller.app_controllers['youtube_music'],
-                    apple_controller=self.controller.app_controllers['apple_music'],
-                    amazon_controller=self.controller.app_controllers['amazon_music']
-                )
-            success = self.automation.start_automation()
-            if success:
-                logger.info("All music apps automation started successfully")
-                return True
-            else:
-                logger.error("Failed to start all music apps automation")
-                self.automation = None
-                return False
-        except Exception as e:
-            logger.error(f"Failed to start all music apps automation: {e}")
+    def start_all_automation(self, *args) -> bool:
+        """
+        Start automation for all apps with optional exclusions.
+        Example usage:
+            sall                -> starts all apps
+            sall --exclude tidal          -> exclude Tidal Music
+            sall --exclude -tidal -amazon  -> exclude Tidal and Amazon Music
+        """
+        exclusions = set()
+        if args:
+            # Look for '--exclude' flag and collect subsequent tokens as exclusions.
+            if args[0] == '--exclude':
+                for token in args[1:]:
+                    token_clean = token.lstrip('-').lower()  # remove any leading dashes and normalize
+                    exclusions.add(token_clean)
+
+        # Map exclusions to controllers (adjust token names as desired)
+        yt_controller = None if 'youtube' in exclusions or 'ytm' in exclusions else self.controller.app_controllers.get(
+            'youtube_music')
+        apple_controller = None if 'apple' in exclusions else self.controller.app_controllers.get('apple_music')
+        amazon_controller = None if 'amazon' in exclusions else self.controller.app_controllers.get('amazon_music')
+        tidal_controller = None if 'tidal' in exclusions else self.controller.app_controllers.get('tidal_music')
+
+        logger.info(f"Starting automation with exclusions: {exclusions}")
+
+        # Initialize automation with the filtered controllers.
+        if not self.automation:
+            logger.info("Initializing all music apps automation...")
+            self.automation = MultiMusicAutomation(
+                youtube_controller=yt_controller,
+                apple_controller=apple_controller,
+                amazon_controller=amazon_controller,
+                tidal_controller=tidal_controller
+            )
+        success = self.automation.start_automation()
+        if success:
+            logger.info("All music apps automation started successfully")
+            return True
+        else:
+            logger.error("Failed to start all music apps automation")
             self.automation = None
             return False
 
@@ -247,46 +379,40 @@ class CLI:
         """Show current automation status including pause state."""
         try:
             if self.automation:
-                if not self.automation.running:
-                    status = "Stopped"
-                elif self.automation.paused:
-                    status = "Paused"
-                else:
-                    status = "Running"
+                status = self.automation.get_status()
+                logger.info(f"Automation status: {'Running' if status['running'] else 'Stopped'}")
+                if status['paused']:
+                    logger.info("Automation is currently paused")
+                if status['running']:
+                    # Log active apps first
+                    logger.info(f"Active apps: {', '.join(status['active_apps'])}")
+                    if 'YouTube Music' in status['active_apps']:
+                        logger.info("YouTube Music Status:")
+                        if 'last_youtube_action' in status:
+                            logger.info(f"Last action: {status['last_youtube_action']}")
+                        if 'next_youtube_iso' in status:
+                            logger.info(f"Next IsoClipboard: {status['next_youtube_iso']}")
 
-                logger.info(f"Automation status: {status}")
+                    if 'Apple Music' in status['active_apps']:
+                        logger.info("Apple Music Status:")
+                        if 'last_apple_action' in status:
+                            logger.info(f"Last action: {status['last_apple_action']}")
+                        if 'next_apple_iso' in status:
+                            logger.info(f"Next IsoClipboard: {status['next_apple_iso']}")
 
-                if self.automation.running:
-                    active_apps = []
+                    if 'Amazon Music' in status['active_apps']:
+                        logger.info("Amazon Music Status:")
+                        if 'last_amazon_action' in status:
+                            logger.info(f"Last action: {status['last_amazon_action']}")
+                        if 'next_amazon_iso' in status:
+                            logger.info(f"Next IsoClipboard: {status['next_amazon_iso']}")
 
-                    if self.automation.youtube_controller:
-                        yt_last = time.strftime('%H:%M:%S',
-                                                time.localtime(self.automation.last_youtube_action))
-                        yt_iso = time.strftime('%H:%M:%S',
-                                               time.localtime(self.automation.next_iso_youtube))
-                        active_apps.append("YouTube Music")
-                        logger.info(f"Last YouTube Music action: {yt_last}")
-                        logger.info(f"Next YouTube Music IsoClipboard: {yt_iso}")
-
-                    if self.automation.apple_controller:
-                        am_last = time.strftime('%H:%M:%S',
-                                                time.localtime(self.automation.last_apple_action))
-                        am_iso = time.strftime('%H:%M:%S',
-                                               time.localtime(self.automation.next_iso_apple))
-                        active_apps.append("Apple Music")
-                        logger.info(f"Last Apple Music action: {am_last}")
-                        logger.info(f"Next Apple Music IsoClipboard: {am_iso}")
-
-                    if self.automation.amazon_controller:
-                        amz_last = time.strftime('%H:%M:%S',
-                                                 time.localtime(self.automation.last_amazon_action))
-                        amz_iso = time.strftime('%H:%M:%S',
-                                                time.localtime(self.automation.next_iso_amazon))
-                        active_apps.append("Amazon Music")
-                        logger.info(f"Last Amazon Music action: {amz_last}")
-                        logger.info(f"Next Amazon Music IsoClipboard: {amz_iso}")
-
-                    logger.info(f"Active apps: {', '.join(active_apps)}")
+                    if 'Tidal Music' in status['active_apps']:
+                        logger.info("Tidal Music Status:")
+                        if 'last_tidal_action' in status:
+                            logger.info(f"Last action: {status['last_tidal_action']}")
+                        if 'next_tidal_iso' in status:
+                            logger.info(f"Next IsoClipboard: {status['next_tidal_iso']}")
             else:
                 logger.info("Automation status: Not initialized")
             return True
@@ -294,7 +420,48 @@ class CLI:
             logger.error(f"Error showing automation status: {e}")
             return False
 
+    def pause_automation(self) -> bool:
+        """Pause the current automation."""
+        try:
+            if not self.automation:
+                logger.warning("No automation is currently initialized")
+                return False
+            if not self.automation.running:
+                logger.warning("No automation is currently running")
+                return False
+            if self.automation.paused:
+                logger.warning("Automation is already paused")
+                return False
+            success = self.automation.pause_automation()
+            if success:
+                logger.info("Automation paused successfully")
+            return success
+        except Exception as e:
+            logger.error(f"Failed to pause automation: {e}")
+            return False
+
+    def resume_automation(self) -> bool:
+        """Resume the paused automation."""
+        try:
+            if not self.automation:
+                logger.warning("No automation is currently initialized")
+                return False
+            if not self.automation.running:
+                logger.warning("No automation is currently running")
+                return False
+            if not self.automation.paused:
+                logger.warning("Automation is not paused")
+                return False
+            success = self.automation.resume_automation()
+            if success:
+                logger.info("Automation resumed successfully")
+            return success
+        except Exception as e:
+            logger.error(f"Failed to resume automation: {e}")
+            return False
+
     def display_menu(self, show_help: bool = False):
+        """Display the main menu."""
         if not show_help:
             print("\nEnter command (use --help or -h to show all commands): ")
             return
@@ -314,25 +481,30 @@ class CLI:
             if key.startswith('m'):
                 print(f"{key} - {description}")
 
-        print("\nAutomation Controls:")
+        print("\nTidal Music Controls:")
         for key, (description, _) in self.commands.items():
-            if key in ['sy', 'sa', 'sm', 'sya', 'sym', 'sam', 'sall', 'stop', 'pause', 'resume', 'status']:
+            if key.startswith('t'):
+                print(f"{key} - {description}")
+
+        print("\nAutomation Controls:")
+        automation_commands = ['sy', 'sa', 'sm', 'st', 'sya', 'sym', 'syt', 'sam',
+                               'sat', 'smt', 'sall', 'stop', 'pause', 'resume', 'status']
+        for key, (description, _) in self.commands.items():
+            if key in automation_commands:
                 print(f"{key} - {description}")
 
         print("\nGeneral Commands:")
         for key, (description, _) in self.commands.items():
-            if not key.startswith(('y', 'a', 'm', 's')):
+            if not key.startswith(('y', 'a', 'm', 't', 's')):
                 print(f"{key} - {description}")
 
     def run(self):
         """Run the main CLI loop."""
         logger.info(f"Running CLI for device: {self.device_id}")
-
         while True:
             try:
                 self.display_menu(show_help='--help' in sys.argv)
                 command = input("\nEnter command: ").lower().strip()
-
                 if command in ['--help', '-h']:
                     self.display_menu(show_help=True)
                     continue
@@ -352,66 +524,22 @@ class CLI:
                 continue
 
     def handle_command(self, command: str) -> bool:
-        if command not in self.commands:
+        parts = command.split()
+        if not parts:
+            return True
+        cmd = parts[0]
+        args = parts[1:]
+        if cmd not in self.commands:
             logger.warning(f"Unknown command: {command}")
             return True
 
-        description, func = self.commands[command]
-        if func is None:  # Quit command
-            return False
-
+        description, func = self.commands[cmd]
+        logger.info(f"Executing: {description}")
         try:
-            logger.info(f"Executing: {description}")
-            result = func()
+            result = func(*args) if args else func()
             if isinstance(result, bool) and not result:
                 logger.error(f"Failed to execute: {description}")
             return True
         except Exception as e:
             logger.error(f"Error executing {description}: {e}")
             return True
-
-    def pause_automation(self) -> bool:
-        """Pause the current automation."""
-        try:
-            if not self.automation:
-                logger.warning("No automation is currently initialized")
-                return False
-
-            if not self.automation.running:
-                logger.warning("No automation is currently running")
-                return False
-
-            if self.automation.paused:
-                logger.warning("Automation is already paused")
-                return False
-
-            success = self.automation.pause_automation()
-            if success:
-                logger.info("Automation paused successfully")
-            return success
-        except Exception as e:
-            logger.error(f"Failed to pause automation: {e}")
-            return False
-
-    def resume_automation(self) -> bool:
-        """Resume the paused automation."""
-        try:
-            if not self.automation:
-                logger.warning("No automation is currently initialized")
-                return False
-
-            if not self.automation.running:
-                logger.warning("No automation is currently running")
-                return False
-
-            if not self.automation.paused:
-                logger.warning("Automation is not paused")
-                return False
-
-            success = self.automation.resume_automation()
-            if success:
-                logger.info("Automation resumed successfully")
-            return success
-        except Exception as e:
-            logger.error(f"Failed to resume automation: {e}")
-            return False

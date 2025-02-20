@@ -1,29 +1,29 @@
-# src/controllers/app_controllers/amazon_music.py
+# src/controllers/app_controllers/tidal_music.py
 
 import time
 from typing import Dict
 import uiautomator2 as u2
 from src.controllers.base_controller import BaseController
 from src.controllers.mixins.popup_monitor import PopupMonitorMixin
-from src.constants.app_configs import AmazonMusicConfig
+from src.constants.app_configs import TidalMusicConfig
 from src.utils.logging_utils import setup_logger
 
 logger = setup_logger(__name__)
 
 
-class AmazonMusicController(BaseController, PopupMonitorMixin):
-    """Controller for Amazon Music automation."""
+class TidalMusicController(BaseController, PopupMonitorMixin):
+    """Controller for Tidal Music automation."""
 
     def __init__(self, device: u2.Device):
-        """Initialize Amazon Music controller."""
+        """Initialize Tidal Music controller."""
         super().__init__(device)
         PopupMonitorMixin.__init__(self)
-        self.package_name = AmazonMusicConfig.PACKAGE_NAME
-        self.app_name = AmazonMusicConfig.APP_NAME
+        self.package_name = TidalMusicConfig.PACKAGE_NAME
+        self.app_name = TidalMusicConfig.APP_NAME
         self.isoclipboard_package = "com.example.isolatedclipboard"
 
         # Register apps for monitoring
-        self.register_app_for_monitoring("Amazon Music")
+        self.register_app_for_monitoring("Tidal Music")
         self.register_app_for_monitoring("IsoClipboard")
 
         # Start popup monitor
@@ -32,6 +32,9 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
         # Set up screen settings
         if not self.setup_screen_settings():
             logger.warning("Failed to set up screen settings during initialization")
+
+        # Optionally, capture initial rotation state for later restoration (only at session end)
+        self.initial_rotation_state = self.get_rotation_settings()
 
     def __del__(self):
         """Cleanup when controller is deleted."""
@@ -45,10 +48,7 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
         try:
             auto_rotate = self.device.shell('settings get system accelerometer_rotation').output.strip()
             user_rotation = self.device.shell('settings get system user_rotation').output.strip()
-            return {
-                'auto_rotate': auto_rotate,
-                'user_rotation': user_rotation
-            }
+            return {'auto_rotate': auto_rotate, 'user_rotation': user_rotation}
         except Exception as e:
             logger.error(f"Error getting rotation settings: {e}")
             return {}
@@ -98,7 +98,7 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def _restore_rotation_state(self, initial_state: dict) -> None:
-        """Restore rotation to initial state."""
+        """Restore rotation to initial state (used only at session end)."""
         try:
             if 'auto_rotate' in initial_state:
                 self.device.shell(f'settings put system accelerometer_rotation {initial_state["auto_rotate"]}')
@@ -124,37 +124,10 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error ensuring screen active: {e}")
             return False
 
-    def check_internet_connection(self, max_retries: int = 5, delay: int = 2) -> bool:
-        """Check internet connection using netstat."""
-        for attempt in range(max_retries):
-            try:
-                netstat_check = self.device.shell('netstat -n | grep ESTABLISHED | grep -E "^tcp6.*::ffff:|^tcp[^6]"')
-                if getattr(netstat_check, 'exit_code', 0) != 0:
-                    logger.warning(f"Failed to get TCP connections (attempt {attempt + 1}/{max_retries})")
-                    time.sleep(delay)
-                    continue
-
-                output = str(getattr(netstat_check, 'output', netstat_check)).strip()
-                if not output:
-                    logger.warning(f"No TCP connections found (attempt {attempt + 1}/{max_retries})")
-                    time.sleep(delay)
-                    continue
-
-                connections = output.split('\n')
-                logger.info(f"Found {len(connections)} TCP connections")
-                return True
-            except Exception as e:
-                logger.error(f"Error checking internet connection: {e}")
-                time.sleep(delay)
-        return False
-
     def handle_isoclipboard(self) -> bool:
-        """Handle IsoClipboard automation."""
-        initial_rotation_state = None
+        """Handle IsoClipboard automation for Tidal."""
         try:
-            initial_rotation_state = self.get_rotation_settings()
-            logger.info(f"Initial rotation settings: {initial_rotation_state}")
-
+            logger.info(f"Initial rotation settings: {self.get_rotation_settings()}")
             if not self._force_disable_rotation():
                 logger.error("Failed to disable rotation")
                 return False
@@ -169,14 +142,12 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
                 else:
                     return False
 
-            # Handle fetch operation
             if not self._handle_fetch_operation():
                 return False
 
-            # Check for Amazon Music restart
-            if self.needs_restart("Amazon Music"):
-                logger.info("Restarting Amazon Music after force-close")
-                self.clear_restart_flag("Amazon Music")
+            if self.needs_restart("Tidal Music"):
+                logger.info("Restarting Tidal after force-close")
+                self.clear_restart_flag("Tidal Music")
                 time.sleep(2)
                 if not self.prepare_for_action():
                     return False
@@ -184,40 +155,33 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
             if not self._handle_shuffle_and_play():
                 return False
 
+            self._ensure_mini_player()
+            time.sleep(2)
+
             self.device.press("home")
             time.sleep(1)
-
             return True
+
         except Exception as e:
             logger.error(f"Error with IsoClipboard: {e}")
             return False
-        finally:
-            if initial_rotation_state:
-                self._restore_rotation_state(initial_rotation_state)
 
     def _start_isoclipboard_safely(self) -> bool:
-        """Start IsoClipboard app with improved timing and safety checks."""
+        """Start IsoClipboard app with timing and safety checks."""
         max_attempts = 3
         for attempt in range(max_attempts):
             try:
                 logger.info(f"Starting IsoClipboard attempt {attempt + 1}/{max_attempts}")
-
-                # Verify rotation is disabled
                 if not self._verify_rotation_disabled():
                     logger.error("Rotation control lost before app start")
                     continue
 
-                # Close existing instance if running
                 self.device.app_stop(self.isoclipboard_package)
                 time.sleep(3)
-
-                # Start app using activity manager
                 self.device.shell(
                     f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top'
                 )
-                time.sleep(5)  # Increased pause after starting app
-
-                # Verify rotation is still disabled
+                time.sleep(5)
                 if not self._verify_rotation_disabled():
                     logger.error("Rotation got enabled during app start")
                     continue
@@ -228,93 +192,87 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
                         logger.info("IsoClipboard successfully brought to foreground")
                         time.sleep(2)
                         return True
-
                     logger.warning(f"IsoClipboard not in foreground (check {check + 1}/3), retrying...")
                     self.device.press("home")
                     time.sleep(2)
-
                     self.device.shell(
                         f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top'
                     )
                     time.sleep(3)
-
                 logger.error(f"Failed to bring IsoClipboard to foreground on attempt {attempt + 1}")
-
             except Exception as e:
                 logger.error(f"Error on attempt {attempt + 1}: {e}")
-
             time.sleep(3)
-
         logger.error("All attempts to start IsoClipboard safely failed")
         return False
 
     def _handle_fetch_operation(self) -> bool:
-        """Handle the FETCH button operation with improved timing."""
+        """Handle the FETCH operation for Tidal."""
         try:
             time.sleep(3)
-
-            # Verify rotation before fetch
             if not self._verify_rotation_disabled():
                 return False
 
-            # Click FETCH button for Amazon Music (buttonFetchUrl3)
-            fetch_xpath = '//*[@resource-id="com.example.isolatedclipboard:id/buttonFetchUrl3"]'
+            fetch_xpath = '//*[@resource-id="com.example.isolatedclipboard:id/buttonFetchUrl7"]'
             fetch_button = self.device.xpath(fetch_xpath)
 
             if fetch_button.exists:
                 time.sleep(2)
                 fetch_button.click()
-                logger.info("Clicked FETCH AM button using XPath")
+                logger.info("Clicked FETCH Tidal button using XPath")
                 time.sleep(8)
             else:
-                # Fallback to resourceId if XPath fails
-                fetch_button = self.device(resourceId="com.example.isolatedclipboard:id/buttonFetchUrl3")
+                fetch_button = self.device(resourceId="com.example.isolatedclipboard:id/buttonFetchUrl7")
                 if not fetch_button.exists:
-                    logger.error("FETCH AM button not found")
+                    logger.error("FETCH Tidal button not found")
                     return False
-
                 time.sleep(2)
                 fetch_button.click()
-                logger.info("Clicked FETCH AM button using resourceId")
+                logger.info("Clicked FETCH Tidal button using resourceId")
                 time.sleep(8)
-
-            for attempt in range(3):
-                if self.check_internet_connection():
-                    return True
-                time.sleep(3)
-
-            logger.error("No internet connection available after multiple attempts")
-            return False
+            return True
         except Exception as e:
             logger.error(f"Error in fetch operation: {e}")
             return False
 
     def _handle_shuffle_and_play(self) -> bool:
-        """Handle shuffle button interaction."""
+        """Handle shuffle button interaction for Tidal."""
         try:
             if not self._verify_rotation_disabled():
                 return False
 
             time.sleep(5)
-            logger.info("Looking for shuffle button...")
+            logger.info("Looking for Tidal shuffle button...")
 
-            shuffle_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/ShuffleButton"]')
+            shuffle_button = self.device.xpath('//*[@resource-id="com.aspiro.tidal:id/playbackControlButtonSecond"]')
             if not shuffle_button.exists:
-                logger.error("Shuffle button not found")
+                logger.error("Tidal shuffle button not found")
                 return False
 
             shuffle_button.click()
-            logger.info("Clicked shuffle button")
-
+            logger.info("Clicked Tidal shuffle button")
             time.sleep(5)
-
             return True
         except Exception as e:
             logger.error(f"Error handling shuffle: {e}")
             return False
 
+    def _ensure_mini_player(self):
+        """Ensure the mini-player is visible to maintain correct Tidal state."""
+        try:
+            logger.info("Searching for mini_player element...")
+            mini_player = self.device.xpath('//*[@resource-id="com.aspiro.tidal:id/miniControlsView"]')
+            if mini_player.exists:
+                mini_player.click()
+                logger.info("Clicked mini_player to ensure correct Tidal state")
+                time.sleep(1)
+            else:
+                logger.info("mini_player element not found")
+        except Exception as e:
+            logger.error(f"Error ensuring mini_player state: {e}")
+
     def prepare_for_action(self) -> bool:
-        """Streamlined preparation for actions."""
+        """Streamlined preparation before performing an action."""
         try:
             if not self.ensure_screen_active():
                 logger.error("Failed to ensure screen active before action")
@@ -323,9 +281,9 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
             if self._verify_app_running():
                 return True
 
-            if self.needs_restart("Amazon Music"):
-                logger.info("Restarting Amazon Music after force-close")
-                self.clear_restart_flag("Amazon Music")
+            if self.needs_restart("Tidal Music"):
+                logger.info("Restarting Tidal after force-close")
+                self.clear_restart_flag("Tidal Music")
                 time.sleep(1)
 
             if not self.start_app():
@@ -333,36 +291,30 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
 
             time.sleep(1)
             return self._verify_app_running()
-
         except Exception as e:
             logger.error(f"Error preparing for action: {e}")
             return False
 
-
     def play_pause(self) -> bool:
-        """Toggle play/pause with a max 15-second wait for Amazon Music readiness."""
+        """Toggle play/pause with a max 15-second wait for Tidal readiness."""
         start_time = time.time()
         try:
             logger.info("Attempting play/pause...")
-
-            # 1. Wait up to 15s for Amazon Music readiness.
             prepared = False
             while time.time() - start_time < 15:
                 if self.prepare_for_action():
                     prepared = True
                     break
                 time.sleep(2)
-
             if not prepared:
-                logger.warning("Timed out preparing Amazon Music; using keyevent fallback.")
+                logger.warning("Timed out preparing Tidal; using keyevent fallback.")
                 self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
                 return True
 
-            # 2. If prepared, try the actual UI approach:
-            play_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/PersistentPlayerPlayButton"]')
+            play_button = self.device.xpath('//*[@resource-id="com.aspiro.tidal:id/miniControlsView"]')
             if play_button.exists:
                 play_button.click()
-                logger.info("Clicked Amazon Music play/pause button")
+                logger.info("Clicked Tidal play/pause button")
                 time.sleep(2)
                 return True
 
@@ -370,40 +322,34 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
             self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
             time.sleep(2)
             return True
-
         except Exception as e:
             logger.error(f"Error toggling play/pause: {e}")
-            # Final fallback
             try:
                 self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
                 logger.info("Sent play/pause keyevent after error")
                 time.sleep(2)
                 return True
-            except:
+            except Exception:
                 return False
 
     def next_track(self) -> bool:
-        """Skip to next track with a max 15-second wait for Amazon Music readiness."""
+        """Skip to next track with a max 15-second wait for Tidal readiness."""
         start_time = time.time()
         try:
             logger.info("Attempting next track...")
-
-            # 1. Wait up to 15s for readiness.
             prepared = False
             while time.time() - start_time < 15:
                 if self.prepare_for_action():
                     prepared = True
                     break
                 time.sleep(2)
-
             if not prepared:
-                logger.warning("Timed out preparing Amazon Music; using keyevent fallback for next track")
+                logger.warning("Timed out preparing Tidal; using keyevent fallback for next track")
                 self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
                 time.sleep(2)
                 return True
 
-            # 2. If prepared, try the UI next button.
-            next_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/PersistentPlayerNextButton"]')
+            next_button = self.device.xpath('//*[@resource-id="com.aspiro.tidal:id/next"]')
             if next_button.exists:
                 next_button.click()
                 logger.info("Clicked next track button")
@@ -414,107 +360,95 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
             self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
             time.sleep(2)
             return True
-
         except Exception as e:
             logger.error(f"Error skipping to next track: {e}")
-            # Final fallback
             try:
                 self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
                 time.sleep(2)
                 return True
-            except:
+            except Exception:
                 return False
 
     def previous_track(self) -> bool:
-        """Go to previous track with a max 15-second wait for Amazon Music readiness."""
+        """Go to previous track with a max 15-second wait for Tidal readiness."""
         start_time = time.time()
         try:
-            logger.info("Amazon Music: Attempting previous track...")
-
-            # Wait up to 15s for Amazon Music to be ready.
+            logger.info("Tidal: Attempting previous track...")
             prepared = False
             while time.time() - start_time < 15:
                 if self.prepare_for_action():
                     prepared = True
                     break
                 time.sleep(2)
-
             if not prepared:
-                logger.warning("Amazon Music: Timed out preparing; using keyevent fallback for previous track")
+                logger.warning("Tidal: Timed out preparing; using keyevent fallback for previous track")
                 self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
                 time.sleep(2)
                 return True
 
-            # Try the UI previous button.
-            prev_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/PersistentPlayerPrevButton"]')
+            prev_button = self.device.xpath('//*[@resource-id="com.aspiro.tidal:id/previous"]')
             if prev_button.exists:
                 prev_button.click()
-                logger.info("Amazon Music: Clicked previous track button")
+                logger.info("Tidal: Clicked previous track button")
                 time.sleep(2)
                 return True
 
-            logger.info("Amazon Music: UI previous button not found; using keyevent fallback")
+            logger.info("Tidal: UI previous button not found; using keyevent fallback")
             self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
             time.sleep(2)
             return True
-
         except Exception as e:
-            logger.error(f"Amazon Music: Error going to previous track: {e}")
+            logger.error(f"Tidal: Error going to previous track: {e}")
             try:
                 self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
                 time.sleep(2)
                 return True
             except Exception as ex:
-                logger.error(f"Amazon Music: Fallback keyevent failed: {ex}")
+                logger.error(f"Tidal: Fallback keyevent failed: {ex}")
                 return False
 
     def like_current_song(self) -> bool:
-        """Like current song with a max 15-second wait for Amazon Music readiness."""
+        """Like current song with a max 15-second wait for Tidal readiness."""
         start_time = time.time()
         try:
             logger.info("Starting like song action...")
-
-            # 1. Wait up to 15s for readiness.
             prepared = False
             while time.time() - start_time < 15:
                 if self.prepare_for_action():
                     prepared = True
                     break
                 time.sleep(2)
-
             if not prepared:
-                logger.warning("Timed out preparing Amazon Music; cannot like song.")
+                logger.warning("Timed out preparing Tidal; cannot like song.")
                 return False
 
-            # 2. Try to click the 'like' button if it exists.
-            like_button = self.device.xpath('//*[@resource-id="com.amazon.mp3:id/StageLikeButtonWrapper"]')
+            like_button = self.device.xpath('//*[@resource-id="com.aspiro.tidal:id/favoriteButton"]')
             if not like_button.exists:
-                logger.error("Like button not found in Amazon Music.")
+                logger.error("Like button not found in Tidal.")
                 return False
 
             like_button.click()
-            logger.info("Clicked like button in Amazon Music")
-            time.sleep(2)
+            logger.info("Clicked like button in Tidal")
+            time.sleep(5)
             return True
-
         except Exception as e:
             logger.error(f"Error liking current song: {e}")
             return False
 
     def _verify_app_running(self) -> bool:
-        """Optimized verification of Amazon Music running state."""
+        """Optimized verification of Tidal running state."""
         try:
             if self.device(packageName=self.package_name).exists:
-                logger.info("Found Amazon Music UI elements")
+                logger.info("Found Tidal UI elements")
                 return True
 
             current_app = self.device.app_current()
             if current_app.get('package') == self.package_name:
-                logger.info("Amazon Music is current app")
+                logger.info("Tidal is current app")
                 return True
 
             if self.package_name in self.device.shell('dumpsys activity activities | grep -i "mResumedActivity"'):
-                logger.info("Amazon Music found in resumed activities")
+                logger.info("Tidal found in resumed activities")
                 return True
 
             return False
@@ -523,100 +457,82 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def stop_app(self) -> bool:
-        """Stop Amazon Music app."""
+        """Stop Tidal app and restore rotation state if desired at session end."""
         try:
             self.device.app_stop(self.package_name)
             time.sleep(1)
-            # Verify app is actually stopped
             if self.is_running():
                 logger.warning("App still running after stop attempt, trying force-stop")
                 return self.force_stop()
+
+            if self.initial_rotation_state:
+                self._restore_rotation_state(self.initial_rotation_state)
+            logger.info("Restored rotation state after stopping Tidal.")
             return True
         except Exception as e:
-            logger.error(f"Error stopping Amazon Music: {e}")
+            logger.error(f"Error stopping Tidal: {e}")
             return False
 
     def start_app(self) -> bool:
-        """Start Amazon Music app with optimized timing."""
-        initial_state = None
+        """Start Tidal app using am start command without restoring rotation immediately."""
         try:
-            logger.info("Starting Amazon Music...")
-            initial_state = self.get_rotation_settings()
-
-            # Force disable rotation first
+            logger.info("Starting Tidal...")
             if not self._force_disable_rotation():
                 return False
 
-            logger.info("Attempting start with monkey command...")
+            logger.info("Attempting start with am start command...")
             self.device.shell(
-                f'monkey -p {self.package_name} -c android.intent.category.LAUNCHER 1'
+                f'am start -W -n {self.package_name}/com.aspiro.wamp.LoginFragmentActivity --activity-single-top'
             )
             time.sleep(2)
 
-            # Quick check
             if self._verify_app_running():
-                logger.info("Amazon Music started successfully with monkey command")
+                logger.info("Tidal started successfully with am start command")
                 return True
 
-            # Fallback to activity manager if monkey fails
-            logger.info("Monkey command failed, trying activity manager...")
-            self.device.shell(
-                f'am start -W -n {self.package_name}/com.amazon.mp3.activity.MainActivity --activity-single-top'
-            )
-            time.sleep(2)
+            logger.info("am start command did not launch Tidal properly, retrying...")
+            time.sleep(1)
+            if self._verify_app_running():
+                logger.info("Tidal started successfully after retry")
+                return True
 
-            # One retry with shorter interval
-            if not self._verify_app_running():
-                time.sleep(1)
-                if self._verify_app_running():
-                    logger.info("Amazon Music started successfully after retry")
-                    return True
-                logger.error("Failed to start Amazon Music")
-                return False
-
-            logger.info("Amazon Music started successfully")
-            return True
+            logger.error("Failed to start Tidal")
+            return False
 
         except Exception as e:
-            logger.error(f"Error starting Amazon Music: {e}")
+            logger.error(f"Error starting Tidal: {e}")
             return False
-        finally:
-            if initial_state:
-                self._restore_rotation_state(initial_state)
 
     def is_running(self) -> bool:
-        """Check if Amazon Music is running with improved detection."""
+        """Check if Tidal is running with improved detection."""
         try:
             return self._verify_app_running()
         except Exception as e:
-            logger.error(f"Error checking if Amazon Music is running: {e}")
+            logger.error(f"Error checking if Tidal is running: {e}")
             return False
 
     def force_stop(self) -> bool:
-        """Force stop Amazon Music."""
+        """Force stop Tidal."""
         try:
             self.device.app_stop(self.package_name)
             time.sleep(1)
             return True
         except Exception as e:
-            logger.error(f"Error force stopping Amazon Music: {e}")
+            logger.error(f"Error force stopping Tidal: {e}")
             return False
 
     def manage_window_state(self, minimize: bool = True) -> bool:
-        """Manage Amazon Music window state."""
+        """Manage Tidal window state."""
         try:
             if minimize:
-                logger.info("Minimizing Amazon Music window")
+                logger.info("Minimizing Tidal window")
                 self.device.press("home")
                 time.sleep(1)
                 return True
             else:
-                logger.info("Maximizing Amazon Music window")
+                logger.info("Maximizing Tidal window")
                 if self.is_running():
-                    # Use monkey command for more reliable app switching
-                    command = (
-                        "monkey -p com.amazon.mp3 -c android.intent.category.LAUNCHER 1"
-                    )
+                    command = f"monkey -p {self.package_name} -c android.intent.category.LAUNCHER 1"
                     self.device.shell(command)
                     time.sleep(3)
                     return True

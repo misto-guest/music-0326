@@ -35,7 +35,6 @@ def with_app_lock(lock: threading.Lock):
         return wrapper
     return decorator
 
-
 class MutexMixin:
     """Optional: Mixin class if you want each controller to have its own app lock."""
     def __init__(self, *args, **kwargs):

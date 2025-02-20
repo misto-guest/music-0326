@@ -370,188 +370,179 @@ class YouTubeMusicController(BaseController, PopupMonitorMixin):
         return False
 
     def next_track(self) -> bool:
-        """Skip to next track with popup monitoring."""
+        """Skip to next track with a max 15-second wait for YT Music readiness."""
+        start_time = time.time()
         try:
             logger.info("Attempting next track...")
 
-            if not self.prepare_for_action():
-                if self.needs_restart("YouTube Music"):
-                    logger.info("Retrying after force-close")
-                    self.clear_restart_flag("YouTube Music")
-                    time.sleep(2)
-                    if not self.prepare_for_action():
-                        logger.info("Using keyevent fallback")
-                    self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
-                    return True
-
-            max_attempts = 3
-            for attempt in range(max_attempts):
-                if self.needs_restart("YouTube Music"):
-                    logger.info("App was force-closed, retrying...")
-                    self.clear_restart_flag("YouTube Music")
-                    if not self.prepare_for_action():
-                        continue
-
-                next_button = self.device(
-                    resourceId=f"{self.package_name}:id/player_control_next_button"
-                )
-                if next_button.exists:
-                    next_button.click()
-                    logger.info("Clicked next track button")
-                    time.sleep(2)
-                    return True
-
-                logger.warning(f"Next button not found, attempt {attempt + 1}/{max_attempts}")
+            # 1. Wait up to 15s for YT Music readiness.
+            prepared = False
+            while time.time() - start_time < 15:
+                if self.prepare_for_action():
+                    prepared = True
+                    break
                 time.sleep(2)
 
-            # Fallback to keyevent
-            logger.info("UI attempts failed, using keyevent")
+            if not prepared:
+                logger.warning("Timed out preparing YT Music; fallback to keyevent for next track")
+                self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
+                time.sleep(2)
+                return True
+
+            # 2. Try UI next button.
+            next_button = self.device(
+                resourceId=f"{self.package_name}:id/player_control_next_button"
+            )
+            if next_button.exists:
+                next_button.click()
+                logger.info("Clicked next track button")
+                time.sleep(2)
+                return True
+
+            # 3. Fallback to keyevent
+            logger.info("UI next button not found, using keyevent fallback")
             self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
             time.sleep(2)
             return True
 
         except Exception as e:
             logger.error(f"Error skipping to next track: {e}")
+            # Final fallback
             try:
                 self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
-                logger.info("Sent next track keyevent after error")
                 time.sleep(2)
                 return True
             except:
                 return False
 
     def previous_track(self) -> bool:
-        """Go to previous track with popup monitoring."""
+        """Go to previous track with a max 15-second wait for YouTube Music readiness."""
+        start_time = time.time()
         try:
-            logger.info("Attempting previous track...")
+            logger.info("YouTube Music: Attempting previous track...")
 
-            if not self.prepare_for_action():
-                if self.needs_restart("YouTube Music"):
-                    logger.info("Retrying after force-close")
-                    self.clear_restart_flag("YouTube Music")
-                    time.sleep(2)
-                    if not self.prepare_for_action():
-                        logger.info("Using keyevent fallback")
-                        self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
-                        return True
-                else:
-                    logger.info("Using keyevent fallback")
-                    self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
-                    return True
-
-            max_attempts = 3
-            for attempt in range(max_attempts):
-                if self.needs_restart("YouTube Music"):
-                    logger.info("App was force-closed, retrying...")
-                    self.clear_restart_flag("YouTube Music")
-                    if not self.prepare_for_action():
-                        continue
-
-                prev_button = self.device(
-                    resourceId=f"{self.package_name}:id/player_control_previous_button"
-                )
-                if prev_button.exists:
-                    prev_button.click()
-                    logger.info("Clicked previous track button")
-                    time.sleep(2)
-                    return True
-
-                logger.warning(f"Previous button not found, attempt {attempt + 1}/{max_attempts}")
+            # Wait up to 15s for YouTube Music to be ready.
+            prepared = False
+            while time.time() - start_time < 15:
+                if self.prepare_for_action():
+                    prepared = True
+                    break
                 time.sleep(2)
 
-            # Fallback to keyevent
-            logger.info("UI attempts failed, using keyevent")
+            if not prepared:
+                logger.warning("YouTube Music: Timed out preparing; using keyevent fallback for previous track")
+                self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
+                time.sleep(2)
+                return True
+
+            # Try to find the UI previous button.
+            prev_button = self.device(
+                resourceId=f"{self.package_name}:id/player_control_previous_button"
+            )
+            if prev_button.exists:
+                prev_button.click()
+                logger.info("YouTube Music: Clicked previous track button")
+                time.sleep(2)
+                return True
+
+            logger.info("YouTube Music: UI previous button not found; using keyevent fallback")
             self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
             time.sleep(2)
             return True
 
         except Exception as e:
-            logger.error(f"Error going to previous track: {e}")
+            logger.error(f"YouTube Music: Error going to previous track: {e}")
             try:
                 self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
-                logger.info("Sent previous track keyevent after error")
                 time.sleep(2)
                 return True
-            except:
+            except Exception as ex:
+                logger.error(f"YouTube Music: Fallback keyevent failed: {ex}")
                 return False
 
     def play_pause(self) -> bool:
-        """Toggle play/pause state with keyevent fallback."""
+        """Toggle play/pause with a max 15-second wait for YT Music readiness."""
+        start_time = time.time()
         try:
             logger.info("Attempting play/pause...")
 
-            if not self.prepare_for_action():
-                if self.needs_restart("YouTube Music"):
-                    logger.info("Retrying after force-close")
-                    self.clear_restart_flag("YouTube Music")
-                    time.sleep(2)
-                    if not self.prepare_for_action():
-                        logger.info("Using keyevent fallback")
-                        self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
-                        return True
-                else:
-                    logger.info("Using keyevent fallback")
-                    self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
-                    return True
+            # 1. Wait up to 15s for YT Music to be in foreground & stable.
+            prepared = False
+            while time.time() - start_time < 15:
+                if self.prepare_for_action():
+                    prepared = True
+                    break
+                time.sleep(2)
 
+            if not prepared:
+                logger.warning("Timed out preparing YouTube Music; fallback to keyevent for play/pause")
+                self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
+                return True
+
+            # 2. Try the normal UI approach (player_control_play_pause_replay_button).
             play_button = self.device(
                 resourceId=f"{self.package_name}:id/player_control_play_pause_replay_button"
             )
             if play_button.exists:
                 play_button.click()
                 logger.info("Clicked play/pause button via UI")
-                time.sleep(1)
+                time.sleep(2)
                 return True
 
-            # Fallback to keyevent
-            logger.info("Play button not found, using keyevent")
+            # 3. If not found, fallback to keyevent
+            logger.info("Play button not found, using keyevent fallback")
             self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
-            time.sleep(1)
+            time.sleep(2)
             return True
 
         except Exception as e:
             logger.error(f"Error toggling play/pause: {e}")
+            # Final fallback
             try:
                 self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
                 logger.info("Sent play/pause keyevent after error")
-                time.sleep(1)
+                time.sleep(2)
                 return True
             except:
                 return False
 
     def like_current_song(self) -> bool:
-        """Like current song with popup monitoring."""
+        """Like current song with a max 15-second wait for YT Music readiness."""
+        start_time = time.time()
         try:
             logger.info("Starting like song action...")
 
-            if not self.prepare_for_action():
-                if self.needs_restart("YouTube Music"):
-                    logger.info("Retrying after force-close")
-                    self.clear_restart_flag("YouTube Music")
-                    time.sleep(2)
-                    if not self.prepare_for_action():
-                        return False
-                else:
-                    return False
+            # 1. Wait up to 15s for readiness.
+            prepared = False
+            while time.time() - start_time < 15:
+                if self.prepare_for_action():
+                    prepared = True
+                    break
+                time.sleep(2)
 
-            # Try XPath first
+            if not prepared:
+                logger.warning("Timed out preparing YT Music; cannot like song.")
+                return False
+
+            # 2. Try the “like” button via XPath or resourceId (depending on your app).
+            # Example: attempt a content-desc match or fallback coords.
             xpath = ('//*[contains(@content-desc, "like this video along with") '
                      'and contains(@content-desc, "other people")]/android.view.ViewGroup[1]')
             like_button = self.device.xpath(xpath)
 
             if like_button.exists:
-                logger.info("Found like button via XPath")
+                logger.info("Found like button via XPath; clicking.")
                 like_button.click()
                 time.sleep(2)
                 return True
 
-            # Try fallback coordinates if needed
+            logger.info("Like button not found, maybe fallback coordinates or different ID.")
+            # Optional fallback click
             screen_w, screen_h = self.device.window_size()
             x = int(0.113 * screen_w)
             y = int(0.623 * screen_h)
-
-            logger.info(f"Using fallback coordinates: x={x}, y={y}")
             self.device.click(x, y)
+            logger.info("Clicked fallback coords for like button")
             time.sleep(2)
             return True
 

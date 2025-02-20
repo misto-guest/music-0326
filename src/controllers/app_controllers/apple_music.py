@@ -2,6 +2,7 @@
 
 import re
 import time
+import logging
 from typing import Dict
 import uiautomator2 as u2
 from src.controllers.base_controller import BaseController
@@ -386,33 +387,65 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def play_pause(self) -> bool:
+        """Toggle play/pause with a max 15-second wait for app readiness."""
+        start_time = time.time()
         try:
             logger.info("Attempting play/pause...")
-            if not self.prepare_for_action():
-                logger.info("Using keyevent fallback for play/pause")
+
+            # 1. Wait for up to 15 seconds for Apple Music to be ready (foreground + playing).
+            prepared = False
+            while time.time() - start_time < 15:
+                if self.prepare_app_and_play():
+                    prepared = True
+                    break
+                time.sleep(2)
+
+            if not prepared:
+                logger.warning("Timed out preparing Apple Music; using keyevent fallback for play/pause")
                 self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
                 return True
 
+            # 2. If prepared is True, do the main approach.
+            #    For Apple Music, we often just send keyevent because UI button might not be reliable.
             self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
-            time.sleep(1)
+            logger.info("Sent KEYCODE_MEDIA_PLAY_PAUSE")
+            time.sleep(2)
             self._ensure_mini_player()
             return True
+
         except Exception as e:
             logger.error(f"Error toggling play/pause: {e}")
-            self._ensure_mini_player()
-            return False
+            # Final fallback
+            try:
+                self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
+                time.sleep(2)
+                self._ensure_mini_player()
+                return True
+            except:
+                return False
 
     def next_track(self) -> bool:
+        """Skip to next track with a max 15-second wait for app readiness."""
+        start_time = time.time()
         try:
             logger.info("Attempting next track...")
 
-            if not self.prepare_app_and_play():
-                logger.info("Preparation failed, using keyevent fallback for next track")
+            # 1. Wait for up to 15 seconds for Apple Music to be ready.
+            prepared = False
+            while time.time() - start_time < 15:
+                if self.prepare_app_and_play():
+                    prepared = True
+                    break
+                time.sleep(2)
+
+            if not prepared:
+                logger.warning("Timed out preparing Apple Music; using keyevent fallback for next track")
                 self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
                 time.sleep(2)
                 self._ensure_mini_player()
                 return True
 
+            # 2. If prepared, try the actual UI button if it’s clickable.
             time.sleep(2)
             next_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/next_fast_forward"]')
 
@@ -429,34 +462,44 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
 
         except Exception as e:
             logger.error(f"Error skipping to next track: {e}")
+            # Final fallback
             try:
                 self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
                 time.sleep(2)
                 self._ensure_mini_player()
                 return True
             except:
-                self._ensure_mini_player()
                 return False
 
     def previous_track(self) -> bool:
+        """Go to previous track with a max 15-second wait for Apple Music readiness."""
+        start_time = time.time()
         try:
-            logger.info("Attempting previous track...")
+            logger.info("Apple Music: Attempting previous track...")
 
-            if not self.prepare_app_and_play():
-                logger.info("Preparation failed, using keyevent fallback for previous track")
+            # Wait up to 15s for Apple Music to be ready.
+            prepared = False
+            while time.time() - start_time < 15:
+                if self.prepare_app_and_play():
+                    prepared = True
+                    break
+                time.sleep(2)
+
+            if not prepared:
+                logger.warning("Apple Music: Timed out preparing; using keyevent fallback for previous track")
                 self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
                 time.sleep(2)
                 self._ensure_mini_player()
                 return True
 
+            # Attempt to click the UI previous button.
             time.sleep(2)
             prev_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/previous_rewind"]')
-
             if self._is_element_clickable(prev_button):
                 prev_button.click()
-                logger.info("Clicked previous track button")
+                logger.info("Apple Music: Clicked previous track button")
             else:
-                logger.info("Previous button not clickable, using keyevent fallback")
+                logger.info("Apple Music: Previous button not clickable; using keyevent fallback")
                 self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
 
             time.sleep(2)
@@ -464,29 +507,40 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             return True
 
         except Exception as e:
-            logger.error(f"Error going to previous track: {e}")
+            logger.error(f"Apple Music: Error going to previous track: {e}")
             try:
                 self.device.shell('input keyevent KEYCODE_MEDIA_PREVIOUS')
                 time.sleep(2)
                 self._ensure_mini_player()
                 return True
-            except:
+            except Exception as ex:
+                logger.error(f"Apple Music: Fallback keyevent failed: {ex}")
                 self._ensure_mini_player()
                 return False
 
     def like_current_song(self) -> bool:
+        """Like current song with a max 15-second wait for app readiness."""
+        start_time = time.time()
         try:
             logger.info("Starting like song action...")
 
-            if not self.prepare_app_and_play():
-                logger.error("Cannot like song, app preparation failed")
-                self._ensure_mini_player()
+            # 1. Wait up to 15s for Apple Music readiness.
+            prepared = False
+            while time.time() - start_time < 15:
+                if self.prepare_app_and_play():
+                    prepared = True
+                    break
+                time.sleep(2)
+
+            if not prepared:
+                logger.error("Cannot like song; timed out preparing Apple Music")
                 return False
 
+            # 2. Attempt to click the “like” button if it’s clickable.
             like_button = self.device.xpath('//*[@resource-id="com.apple.android.music:id/list_favorite_icon"]')
 
             if not self._is_element_clickable(like_button):
-                logger.error("Like button not clickable")
+                logger.error("Like button not clickable or not found")
                 self._ensure_mini_player()
                 return False
 
@@ -495,10 +549,12 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             time.sleep(2)
             self._ensure_mini_player()
             return True
+
         except Exception as e:
             logger.error(f"Error liking current song: {e}")
             self._ensure_mini_player()
             return False
+
 
     def get_rotation_settings(self) -> Dict[str, str]:
         """Get current rotation settings."""
