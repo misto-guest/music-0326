@@ -268,7 +268,7 @@ class CLI:
         amazon_controller = None if any(
             x in ['amazon', 'amz'] for x in exclusions) else self.controller.app_controllers.get('amazon_music')
         tidal_controller = None if 'tidal' in exclusions else self.controller.app_controllers.get('tidal_music')
-        beatport_controller = None if 'beatport' in exclusions else self.controller.app_controllers.get('beatport')
+        beatport_controller = None if 'beatport' in exclusions else self.controller.app_controllers.get('beatport_music')
 
         # Initialize automation with the filtered controllers.
         if not self.automation:
