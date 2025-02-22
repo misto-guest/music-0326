@@ -1,4 +1,4 @@
-# src/controllers/app_controllers/apple_music.py
+
 
 import re
 import time
@@ -664,6 +664,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                     logger.error("Rotation control lost before app start")
                     continue
 
+                # Force-stop IsoClipboard and start it anew
                 self.device.app_stop(self.isoclipboard_package)
                 time.sleep(1)
                 self.device.shell(
@@ -675,9 +676,15 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                     logger.error("Rotation got enabled during app start")
                     continue
 
-                for _ in range(3):
+                # Poll for up to 10 iterations (~10 seconds) for confirmation
+                for _ in range(10):
                     current_app = self.device.app_current()
-                    if current_app.get('package') == self.isoclipboard_package:
+                    logger.info(f"Current app info: {current_app}")
+                    # Check if the FETCH button (unique to IsoClipboard) exists
+                    fetch_button = self.device.xpath(
+                        '//*[@resource-id="com.example.isolatedclipboard:id/buttonFetchUrl2"]'
+                    )
+                    if current_app.get('package') == self.isoclipboard_package or fetch_button.exists:
                         logger.info("IsoClipboard successfully brought to foreground")
                         return True
                     logger.warning("IsoClipboard not in foreground, retrying...")
@@ -689,12 +696,9 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                     time.sleep(2)
 
                 logger.error(f"Failed to bring IsoClipboard to foreground on attempt {attempt + 1}")
-
             except Exception as e:
                 logger.error(f"Error on attempt {attempt + 1}: {e}")
-
             time.sleep(2)
-
         logger.error("All attempts to start IsoClipboard safely failed")
         return False
 

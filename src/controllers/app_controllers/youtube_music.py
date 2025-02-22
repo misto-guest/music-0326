@@ -185,49 +185,41 @@ class YouTubeMusicController(BaseController, PopupMonitorMixin):
                 self._restore_rotation_state(initial_rotation_state)
 
     def _start_isoclipboard_safely(self) -> bool:
-        """Start IsoClipboard app with safety checks."""
         max_attempts = 3
         for attempt in range(max_attempts):
-            try:
-                logger.info(f"Starting IsoClipboard attempt {attempt + 1}/{max_attempts}")
+            logger.info(f"YouTube: Starting IsoClipboard attempt {attempt + 1}/{max_attempts}")
 
-                # Close existing instance if running
-                self.device.app_stop(self.isoclipboard_package)
-                time.sleep(1)
+            if not self._verify_rotation_disabled():
+                logger.error("YouTube: Rotation control lost before app start")
+                continue
 
-                # Start app using activity manager
-                self.device.shell(
-                    f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top'
+            self.device.app_stop(self.isoclipboard_package)
+            time.sleep(1)
+            self.device.shell(f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top')
+            time.sleep(3)
+
+            if not self._verify_rotation_disabled():
+                logger.error("YouTube: Rotation got enabled during app start")
+                continue
+
+            for _ in range(10):  # Poll for up to 10 iterations (~10 seconds)
+                current_app = self.device.app_current()
+                logger.info(f"YouTube: Current app info: {current_app}")
+                fetch_button = self.device.xpath(
+                    '//*[@resource-id="com.example.isolatedclipboard:id/buttonFetchUrl4"]'
                 )
-                time.sleep(3)
+                if current_app.get('package') == self.isoclipboard_package or fetch_button.exists:
+                    logger.info("YouTube: IsoClipboard successfully brought to foreground")
+                    return True
+                logger.warning("YouTube: IsoClipboard not in foreground, retrying...")
+                self.device.press("home")
+                time.sleep(1)
+                self.device.shell(f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top')
+                time.sleep(2)
 
-                # Verify rotation is still disabled
-                if not self._verify_rotation_disabled():
-                    logger.error("Rotation got enabled during app start")
-                    continue
-
-                # Multiple verification attempts for foreground status
-                for _ in range(3):
-                    current_app = self.device.app_current()
-                    if current_app.get('package') == self.isoclipboard_package:
-                        logger.info("IsoClipboard successfully brought to foreground")
-                        return True
-                    logger.warning("IsoClipboard not in foreground, retrying...")
-                    self.device.press("home")
-                    time.sleep(1)
-                    self.device.shell(
-                        f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top'
-                    )
-                    time.sleep(2)
-
-                logger.error(f"Failed to bring IsoClipboard to foreground on attempt {attempt + 1}")
-
-            except Exception as e:
-                logger.error(f"Error on attempt {attempt + 1}: {e}")
-
+            logger.error(f"YouTube: Failed to bring IsoClipboard to foreground on attempt {attempt + 1}")
             time.sleep(2)
-
-        logger.error("All attempts to start IsoClipboard safely failed")
+        logger.error("YouTube: All attempts to start IsoClipboard safely failed")
         return False
 
     def _handle_fetch_operation(self) -> bool:
