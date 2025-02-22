@@ -200,6 +200,12 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
         for attempt in range(max_attempts):
             logger.info(f"Amazon: Starting IsoClipboard attempt {attempt + 1}/{max_attempts}")
 
+            # Robust steps: unlock screen and press home button
+            self.device.shell("input keyevent 82")
+            time.sleep(1)
+            self.device.shell("input keyevent 3")
+            time.sleep(1)
+
             if not self._verify_rotation_disabled():
                 logger.error("Amazon: Rotation control lost before app start")
                 continue
@@ -213,6 +219,7 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
                 logger.error("Amazon: Rotation got enabled during app start")
                 continue
 
+            # Poll for confirmation up to 10 iterations (~10 seconds)
             for _ in range(10):
                 current_app = self.device.app_current()
                 logger.info(f"Amazon: Current app info: {current_app}")
@@ -222,7 +229,14 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
                 if current_app.get('package') == self.isoclipboard_package or fetch_button.exists:
                     logger.info("Amazon: IsoClipboard successfully brought to foreground")
                     return True
+
                 logger.warning("Amazon: IsoClipboard not in foreground, retrying...")
+
+                # Retry with robust keyevent steps
+                self.device.shell("input keyevent 82")
+                time.sleep(1)
+                self.device.shell("input keyevent 3")
+                time.sleep(1)
                 self.device.press("home")
                 time.sleep(1)
                 self.device.shell(f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top')

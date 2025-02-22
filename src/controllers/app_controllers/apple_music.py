@@ -657,49 +657,53 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
     def _start_isoclipboard_safely(self) -> bool:
         max_attempts = 3
         for attempt in range(max_attempts):
-            try:
-                logger.info(f"Starting IsoClipboard attempt {attempt + 1}/{max_attempts}")
+            logger.info(f"Apple Music: Starting IsoClipboard attempt {attempt + 1}/{max_attempts}")
 
-                if not self._verify_rotation_disabled():
-                    logger.error("Rotation control lost before app start")
-                    continue
+            # Robust steps: unlock screen and press home button
+            self.device.shell("input keyevent 82")
+            time.sleep(1)
+            self.device.shell("input keyevent 3")
+            time.sleep(1)
 
-                # Force-stop IsoClipboard and start it anew
-                self.device.app_stop(self.isoclipboard_package)
-                time.sleep(1)
-                self.device.shell(
-                    f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top'
+            if not self._verify_rotation_disabled():
+                logger.error("Apple Music: Rotation control lost before app start")
+                continue
+
+            self.device.app_stop(self.isoclipboard_package)
+            time.sleep(1)
+            self.device.shell(f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top')
+            time.sleep(3)
+
+            if not self._verify_rotation_disabled():
+                logger.error("Apple Music: Rotation got enabled during app start")
+                continue
+
+            # Poll for confirmation up to 10 iterations (~10 seconds)
+            for _ in range(10):
+                current_app = self.device.app_current()
+                logger.info(f"Apple Music: Current app info: {current_app}")
+                fetch_button = self.device.xpath(
+                    '//*[@resource-id="com.example.isolatedclipboard:id/buttonFetchUrl2"]'
                 )
-                time.sleep(3)
+                if current_app.get('package') == self.isoclipboard_package or fetch_button.exists:
+                    logger.info("Apple Music: IsoClipboard successfully brought to foreground")
+                    return True
 
-                if not self._verify_rotation_disabled():
-                    logger.error("Rotation got enabled during app start")
-                    continue
+                logger.warning("Apple Music: IsoClipboard not in foreground, retrying...")
 
-                # Poll for up to 10 iterations (~10 seconds) for confirmation
-                for _ in range(10):
-                    current_app = self.device.app_current()
-                    logger.info(f"Current app info: {current_app}")
-                    # Check if the FETCH button (unique to IsoClipboard) exists
-                    fetch_button = self.device.xpath(
-                        '//*[@resource-id="com.example.isolatedclipboard:id/buttonFetchUrl2"]'
-                    )
-                    if current_app.get('package') == self.isoclipboard_package or fetch_button.exists:
-                        logger.info("IsoClipboard successfully brought to foreground")
-                        return True
-                    logger.warning("IsoClipboard not in foreground, retrying...")
-                    self.device.press("home")
-                    time.sleep(1)
-                    self.device.shell(
-                        f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top'
-                    )
-                    time.sleep(2)
+                # Retry with robust keyevent steps
+                self.device.shell("input keyevent 82")
+                time.sleep(1)
+                self.device.shell("input keyevent 3")
+                time.sleep(1)
+                self.device.press("home")
+                time.sleep(1)
+                self.device.shell(f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top')
+                time.sleep(2)
 
-                logger.error(f"Failed to bring IsoClipboard to foreground on attempt {attempt + 1}")
-            except Exception as e:
-                logger.error(f"Error on attempt {attempt + 1}: {e}")
+            logger.error(f"Apple Music: Failed to bring IsoClipboard to foreground on attempt {attempt + 1}")
             time.sleep(2)
-        logger.error("All attempts to start IsoClipboard safely failed")
+        logger.error("Apple Music: All attempts to start IsoClipboard safely failed")
         return False
 
     def _handle_fetch_operation(self) -> bool:
