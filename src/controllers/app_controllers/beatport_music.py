@@ -15,7 +15,8 @@ class BeatportMusicConfig:
 
     # App identification
     APP_NAME = "Beatport Music"
-    PACKAGE_NAME = "com.beatport.android"
+    PACKAGE_NAME = "com.beatport.mobile"
+    MAIN_ACTIVITY = ".features.splash.SplashActivity"
 
     # Time intervals (in seconds)
     NEXT_TRACK_INTERVAL = 300  # Change tracks every 5 minutes
@@ -602,9 +603,8 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
                 return False
 
             logger.info("Attempting start with am start command...")
-            # Adjust the activity name based on Beatport's actual main activity
             self.device.shell(
-                f'am start -W -n {self.package_name}/com.beatport.android.MainActivity --activity-single-top'
+                f'am start -W -n {self.package_name}/{BeatportMusicConfig.MAIN_ACTIVITY} --activity-single-top'
             )
             time.sleep(3)
 
