@@ -762,14 +762,9 @@ class MultiMusicAutomation(MutexMixin):
         return True
 
     def start_beatport_only(self) -> bool:
-        """Start Beatport automation only with initial setup."""
+        """Start Beatport automation only."""
         if not self.beatport_controller:
             logger.error("No Beatport controller available")
-            return False
-
-        # Run initial setup for Beatport automation
-        if not self.beatport_controller.handle_initial_setup():
-            logger.error("Beatport initial setup failed")
             return False
 
         self.running = True
