@@ -193,13 +193,18 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
         return self.handle_initial_setup()
 
     def handle_initial_setup(self) -> bool:
-        """Full UI setup for Beatport, with forced app restart."""
+        """Full UI setup for Beatport with proper playtime init."""
         try:
             if self.check_daily_limit_reached():
                 logger.warning("Can't start Beatport - daily limit reached")
                 return False
 
             logger.info("Performing initial Beatport setup with forced restart...")
+
+            # Important: Save any existing playtime first
+            if self.is_playing:
+                self._update_playtime()
+                self.is_playing = False  # Reset state for new setup
 
             if not self._force_disable_rotation():
                 logger.error("Failed to disable rotation")
@@ -219,6 +224,7 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
                 logger.error("Failed to start Beatport playback")
                 return False
 
+            # Start fresh tracking
             self._start_playtime_tracking()
 
             if not self.manage_window_state(minimize=True):
@@ -285,20 +291,25 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
         return True
 
     def prepare_for_action(self) -> bool:
-        """Ensure we can safely interact with app while maintaining playtime."""
+        """Ensure we can safely interact with app while preserving time."""
         try:
-            # Don't check daily limit here, we already handle that in action methods
+            if self.check_daily_limit_reached():
+                logger.warning("Daily limit reached - cannot prepare for action")
+                return False
+
             if not self.ensure_screen_active():
                 logger.error("Failed to ensure screen is active")
                 return False
 
+            # Important: Update time before any potential restarts
+            if self.is_playing:
+                self._update_playtime()
+
             if self._verify_app_running():
                 return True
 
-            # For app restart:
-            # 1. Save current state and time
+            # App needs restart - remember state
             was_playing = self.is_playing
-            self._update_playtime()
 
             if not self.start_app():
                 return False
@@ -306,9 +317,10 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
             time.sleep(1)
             running = self._verify_app_running()
 
-            # 2. Restore state if app was playing
+            # Restore playing state after restart
             if running and was_playing:
-                self._start_playtime_tracking()
+                self.is_playing = True
+                self.last_start_time = datetime.datetime.now()
 
             return running
 
@@ -564,11 +576,10 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def manage_window_state(self, minimize: bool = True) -> bool:
-        """Minimize (home) or maximize Beatport without affecting playback."""
+        """Minimize/maximize without affecting playback state."""
         try:
             if minimize:
                 logger.info("Minimizing Beatport window")
-                # Don't change playback state on minimize
                 self.device.press("home")
                 time.sleep(1)
                 return True
