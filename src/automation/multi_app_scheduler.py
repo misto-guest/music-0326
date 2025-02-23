@@ -760,3 +760,30 @@ class MultiMusicAutomation(MutexMixin):
 
         logger.info("Started Tidal Music automation")
         return True
+
+    def start_beatport_only(self) -> bool:
+        """Start Beatport automation only with initial setup."""
+        if not self.beatport_controller:
+            logger.error("No Beatport controller available")
+            return False
+
+        # Run initial setup for Beatport automation
+        if not self.beatport_controller.handle_initial_setup():
+            logger.error("Beatport initial setup failed")
+            return False
+
+        self.running = True
+        now = time.time()
+
+        # Start action processing thread
+        self.action_thread = threading.Thread(target=self._process_actions, daemon=True)
+        self.action_thread.start()
+
+        # Set check delay and start Beatport thread only
+        self.next_beatport_check = now + random.randint(60, 180)  # Start in 1-3 minutes
+        self.last_beatport_action = now
+        self.beatport_thread = threading.Thread(target=self._beatport_loop, daemon=True)
+        self.beatport_thread.start()
+
+        logger.info("Started Beatport automation only")
+        return True

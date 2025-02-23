@@ -208,44 +208,96 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
         return self.handle_initial_setup()
 
     def handle_initial_setup(self) -> bool:
-        """Perform initial setup for Beatport."""
+        """Perform initial setup for Beatport using a forced restart."""
         try:
-            # Check if we've hit the daily limit
+            # Check if we've hit the daily playtime limit
             if self.check_daily_limit_reached():
                 logger.warning("Can't start Beatport - daily playtime limit reached")
                 return False
 
-            logger.info("Performing initial Beatport setup...")
+            logger.info("Performing initial Beatport setup with forced restart...")
+
+            # Disable rotation to ensure a consistent UI
             if not self._force_disable_rotation():
                 logger.error("Failed to disable rotation")
                 return False
 
-            # Start the app if it's not running
-            if not self._verify_app_running():
-                if not self.start_app():
-                    logger.error("Failed to start Beatport")
-                    return False
-                time.sleep(BeatportMusicConfig.STARTUP_DELAY)
-
-            # Perform initial setup steps
-            if not self._perform_initial_setup():
-                logger.error("Initial Beatport setup failed")
+            # Force restart Beatport to get it into the expected initial state
+            if not self.restart_app():
+                logger.error("Failed to restart Beatport")
                 return False
 
-            # Start playback
+            # Wait for the app to load
+            time.sleep(BeatportMusicConfig.STARTUP_DELAY)
+
+            # Perform the initial UI sequence (click main graph, library graph, etc.)
+            if not self._perform_initial_setup():
+                logger.error("Initial Beatport UI setup failed")
+                return False
+
+            # Start playback using the shuffle/play logic
             if not self._handle_shuffle_and_play():
                 logger.error("Failed to start Beatport playback")
                 return False
 
-            # Start tracking playtime
+            # Begin tracking playtime
             self._start_playtime_tracking()
 
-            # Success
             logger.info("Beatport initial setup completed successfully")
             return True
 
         except Exception as e:
             logger.error(f"Error during Beatport initial setup: {e}")
+            return False
+
+    def _perform_initial_setup(self) -> bool:
+        """Perform the initial UI sequence for Beatport as per the new requirements."""
+        try:
+            logger.info("Performing Beatport initial UI sequence...")
+
+            # Step 2: Click main graph
+            main_graph = self.device(resourceId="com.beatport.mobile:id/main_graph")
+            if main_graph.exists:
+                main_graph.click()
+                logger.info("Clicked main graph")
+            else:
+                logger.error("Main graph element not found")
+                return False
+            time.sleep(2)
+
+            # Step 3: Click library graph
+            library_graph = self.device(resourceId="com.beatport.mobile:id/library_graph")
+            if library_graph.exists:
+                library_graph.click()
+                logger.info("Clicked library graph")
+            else:
+                logger.error("Library graph element not found")
+                return False
+            time.sleep(3)
+
+            # Step 4: Click playlist item
+            playlist_item = self.device(resourceId="com.beatport.mobile:id/constraintLayoutPlaylistItem")
+            if playlist_item.exists:
+                playlist_item.click()
+                logger.info("Clicked playlist item")
+            else:
+                logger.error("Playlist item element not found")
+                return False
+            time.sleep(3)
+
+            # Step 5: Click shuffle button
+            shuffle_button = self.device(resourceId="com.beatport.mobile:id/linearLayoutShuffle")
+            if shuffle_button.exists:
+                shuffle_button.click()
+                logger.info("Clicked shuffle button")
+            else:
+                logger.error("Shuffle button element not found")
+                return False
+            time.sleep(1)
+
+            return True
+        except Exception as e:
+            logger.error(f"Error in Beatport initial UI sequence: {e}")
             return False
 
     def _handle_shuffle_and_play(self) -> bool:
@@ -662,4 +714,23 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
                     return self.start_app()
         except Exception as e:
             logger.error(f"Failed to manage window state: {e}")
+            return False
+
+    def restart_app(self) -> bool:
+        """Force stop and restart Beatport to ensure initial UI state."""
+        try:
+            # Force-stop the Beatport app
+            self.device.app_stop(BeatportMusicConfig.PACKAGE_NAME)
+            time.sleep(2)  # Wait a moment to ensure it closes
+            start_command = f"am start -W -n {BeatportMusicConfig.PACKAGE_NAME}/{BeatportMusicConfig.MAIN_ACTIVITY} --activity-single-top"
+            self.device.shell(start_command)
+            time.sleep(3)  # Allow time for the app to load
+            if self._verify_app_running():
+                logger.info("Beatport restarted successfully.")
+                return True
+            else:
+                logger.error("Beatport failed to restart.")
+                return False
+        except Exception as e:
+            logger.error(f"Error restarting Beatport: {e}")
             return False
