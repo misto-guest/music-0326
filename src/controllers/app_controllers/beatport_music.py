@@ -148,16 +148,13 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
             self.last_day = current_day
 
     def _update_playtime(self) -> None:
-        """Add elapsed time to daily total with final session tracking."""
-        if self.last_start_time:
+        """Update accumulated playtime if running."""
+        if self.is_playing and self.last_start_time:
             elapsed = (datetime.datetime.now() - self.last_start_time).total_seconds()
             self.daily_playtime_seconds += elapsed
             hours_played = self.daily_playtime_seconds / 3600
-            logger.info(
-                f"Updated playtime: {hours_played:.2f}h "
-                f"(added {elapsed / 60:.2f}min)"
-            )
-            self.last_start_time = None
+            logger.info(f"Updated playtime: {hours_played:.2f}h (+{elapsed / 60:.2f}min)")
+            self.last_start_time = datetime.datetime.now()
 
     def _start_playtime_tracking(self) -> None:
         """Begin counting time with proper state initialization."""
@@ -175,27 +172,19 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
             logger.info(f"Stopped playtime tracking. Total today: {self.daily_playtime_seconds/3600:.2f} hours")
 
     def check_daily_limit_reached(self) -> bool:
-        """Check if 6h daily limit reached with proper tracking."""
-        self._reset_daily_playtime()
+        """Check if 6h daily limit reached with updated tracking."""
+        self._reset_daily_playtime()  # Handle day changes
 
+        # Add current session time
         if self.is_playing:
-            # Update current session time
             self._update_playtime()
-            # Restart tracking from now
-            self._start_playtime_tracking()
 
         hours_played = self.daily_playtime_seconds / 3600
         if hours_played >= self.daily_limit_hours:
-            logger.warning(
-                f"Daily limit reached: {hours_played:.2f} / "
-                f"{self.daily_limit_hours}h"
-            )
+            logger.warning(f"Daily limit reached: {hours_played:.2f} / {self.daily_limit_hours}h")
             return True
         else:
-            logger.info(
-                f"Playtime status: {hours_played:.2f} hours of "
-                f"{self.daily_limit_hours} hour daily limit"
-            )
+            logger.info(f"Playtime status: {hours_played:.2f} hours of {self.daily_limit_hours} hour daily limit")
             return False
 
     def handle_isoclipboard(self) -> bool:
