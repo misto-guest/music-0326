@@ -251,11 +251,11 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def _perform_initial_setup(self) -> bool:
-        """Perform the initial UI sequence for Beatport as per the new requirements."""
+        """Perform the initial UI sequence for Beatport."""
         try:
             logger.info("Performing Beatport initial UI sequence...")
 
-            # Step 2: Click main graph
+            # Step 1: Click main graph
             main_graph = self.device(resourceId="com.beatport.mobile:id/main_graph")
             if main_graph.exists:
                 main_graph.click()
@@ -265,7 +265,7 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
                 return False
             time.sleep(2)
 
-            # Step 3: Click library graph
+            # Step 2: Click library graph
             library_graph = self.device(resourceId="com.beatport.mobile:id/library_graph")
             if library_graph.exists:
                 library_graph.click()
@@ -275,7 +275,7 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
                 return False
             time.sleep(3)
 
-            # Step 4: Click playlist item
+            # Step 3: Click playlist item
             playlist_item = self.device(resourceId="com.beatport.mobile:id/constraintLayoutPlaylistItem")
             if playlist_item.exists:
                 playlist_item.click()
@@ -285,7 +285,7 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
                 return False
             time.sleep(3)
 
-            # Step 5: Click shuffle button
+            # Step 4: Click shuffle button
             shuffle_button = self.device(resourceId="com.beatport.mobile:id/linearLayoutShuffle")
             if shuffle_button.exists:
                 shuffle_button.click()
@@ -308,8 +308,8 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
             # Try to find and click play/shuffle button with multiple attempts
             for attempt in range(3):
                 # Try most common buttons
-                play_button = self.device(resourceId=f"{self.package_name}:id/playButton")
-                shuffle_button = self.device(resourceId=f"{self.package_name}:id/shuffleButton")
+                play_button = self.device(resourceId=f"{self.package_name}:id/linearLayoutPlay")
+                shuffle_button = self.device(resourceId=f"{self.package_name}:id/linearLayoutShuffle")
                 play_all_button = self.device(text="Play All")
                 shuffle_all_button = self.device(text="Shuffle All")
 
