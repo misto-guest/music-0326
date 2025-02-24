@@ -1,3 +1,5 @@
+# src/controllers/app_controllers/beatport_music.py
+
 import time
 import datetime
 from typing import Dict
@@ -26,8 +28,14 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
     """Controller for Beatport music automation with daily 6-hour playtime limit."""
 
     def __init__(self, device: u2.Device):
-        super().__init__(device)
+        """Initialize Beatport controller with proper mixin order."""
+        # First initialize BaseController to set up device
+        BaseController.__init__(self, device)
+
+        # Then initialize PopupMonitorMixin which needs device
         PopupMonitorMixin.__init__(self)
+
+        # Controller specific initialization
         self.package_name = BeatportMusicConfig.PACKAGE_NAME
         self.app_name = BeatportMusicConfig.APP_NAME
 
@@ -40,7 +48,6 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
 
         # Register for popup monitoring
         self.register_app_for_monitoring("Beatport Music")
-        self.start_popup_monitor()
 
         # Screen settings
         if not self.setup_screen_settings():
@@ -50,11 +57,10 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
         self.initial_rotation_state = self.get_rotation_settings()
 
     def __del__(self):
-        """Cleanup on deletion."""
         try:
-            self.stop_popup_monitor()
             if self.is_playing and self.last_start_time:
                 self._update_playtime()
+            logger.info("Cleaning up Beatport Music controller")
         except Exception as e:
             logger.error(f"Error in cleanup: {e}")
 
