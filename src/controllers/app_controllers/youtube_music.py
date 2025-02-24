@@ -679,8 +679,14 @@ class YouTubeMusicController(BaseController, PopupMonitorMixin):
 
     def prepare_for_action(self) -> bool:
         try:
-            logger.info("Preparing YouTube Music without force-stop...")
+            # Check if app needs restart due to popup handling
+            if self.needs_restart("YouTube Music"):
+                logger.info("YouTube Music needs restart after system popup handling")
+                self.clear_restart_flag("YouTube Music")
+                # Start app again
+                return self.start_app()
 
+            logger.info("Preparing YouTube Music without force-stop...")
             # 1. Lock the device in portrait mode at the system level
             logger.info("Disabling auto-rotate...")
             self.device.shell("settings put system accelerometer_rotation 0")
