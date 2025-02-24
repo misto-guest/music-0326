@@ -1,5 +1,4 @@
 # src/controllers/app_controllers/tidal_music.py
-
 import time
 from typing import Dict
 import uiautomator2 as u2
@@ -16,8 +15,10 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
 
     def __init__(self, device: u2.Device):
         """Initialize Tidal Music controller."""
-        super().__init__(device)
+        # Initialize both parent classes properly
+        BaseController.__init__(self, device)
         PopupMonitorMixin.__init__(self)
+
         self.package_name = TidalMusicConfig.PACKAGE_NAME
         self.app_name = TidalMusicConfig.APP_NAME
         self.isoclipboard_package = "com.example.isolatedclipboard"
@@ -29,17 +30,20 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
         # Start popup monitor
         self.start_popup_monitor()
 
+        # Save initial rotation state for later restoration
+        self.initial_rotation_state = self.get_rotation_settings()
+
         # Set up screen settings
         if not self.setup_screen_settings():
             logger.warning("Failed to set up screen settings during initialization")
-
-        # Optionally, capture initial rotation state for later restoration (only at session end)
-        self.initial_rotation_state = self.get_rotation_settings()
 
     def __del__(self):
         """Cleanup when controller is deleted."""
         try:
             self.stop_popup_monitor()
+            # Restore rotation state if needed
+            if hasattr(self, 'initial_rotation_state') and self.initial_rotation_state:
+                self._restore_rotation_state(self.initial_rotation_state)
         except Exception as e:
             logger.error(f"Error in cleanup: {e}")
 
@@ -286,6 +290,13 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
     def prepare_for_action(self) -> bool:
         """Streamlined preparation before performing an action."""
         try:
+            # Check if app needs restart due to popup handling
+            if self.needs_restart("Tidal Music"):
+                logger.info("Restarting Tidal after force-close")
+                self.clear_restart_flag("Tidal Music")
+                time.sleep(1)
+                return self.start_app()
+
             if not self.ensure_screen_active():
                 logger.error("Failed to ensure screen active before action")
                 return False
@@ -293,16 +304,12 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
             if self._verify_app_running():
                 return True
 
-            if self.needs_restart("Tidal Music"):
-                logger.info("Restarting Tidal after force-close")
-                self.clear_restart_flag("Tidal Music")
-                time.sleep(1)
-
             if not self.start_app():
                 return False
 
             time.sleep(1)
             return self._verify_app_running()
+
         except Exception as e:
             logger.error(f"Error preparing for action: {e}")
             return False
