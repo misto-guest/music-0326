@@ -16,8 +16,11 @@ class YouTubeMusicController(BaseController, PopupMonitorMixin):
 
     def __init__(self, device: u2.Device):
         """Initialize YouTube Music controller."""
-        super().__init__(device)
+        # Initialize both parent classes properly
+        BaseController.__init__(self, device)
         PopupMonitorMixin.__init__(self)
+
+        # App configuration
         self.package_name = YouTubeMusicConfig.PACKAGE_NAME
         self.app_name = YouTubeMusicConfig.APP_NAME
         self.isoclipboard_package = IsoClipboardConfig.PACKAGE_NAME
@@ -29,12 +32,39 @@ class YouTubeMusicController(BaseController, PopupMonitorMixin):
         # Start popup monitor
         self.start_popup_monitor()
 
+        # Save initial rotation state for later restoration
+        self.initial_rotation_state = self.get_rotation_settings()
+
+        # Set up screen settings for better reliability
+        self.setup_screen_settings()
+
     def __del__(self):
         """Cleanup when controller is deleted."""
         try:
             self.stop_popup_monitor()
+            # Restore rotation state if needed
+            if hasattr(self, 'initial_rotation_state') and self.initial_rotation_state:
+                self._restore_rotation_state(self.initial_rotation_state)
         except Exception as e:
             logger.error(f"Error in cleanup: {e}")
+
+    def setup_screen_settings(self) -> bool:
+        """Setup screen timeout and stay-on settings."""
+        try:
+            logger.info("Setting up screen settings")
+            self.device.shell('settings put system screen_off_timeout 1800000')
+            self.device.shell('settings put global stay_on_while_plugged_in 3')
+            timeout = self.device.shell('settings get system screen_off_timeout')
+            if '1800000' in str(timeout):
+                logger.info("Screen settings configured successfully")
+                return True
+            else:
+                logger.error("Failed to verify screen settings")
+                return False
+        except Exception as e:
+            logger.error(f"Error setting up screen settings: {e}")
+            return False
+
 
     def get_rotation_settings(self) -> Dict[str, str]:
         """Get current rotation settings."""
@@ -185,49 +215,55 @@ class YouTubeMusicController(BaseController, PopupMonitorMixin):
                 self._restore_rotation_state(initial_rotation_state)
 
     def _start_isoclipboard_safely(self) -> bool:
-        """Start IsoClipboard app with safety checks."""
         max_attempts = 3
         for attempt in range(max_attempts):
-            try:
-                logger.info(f"Starting IsoClipboard attempt {attempt + 1}/{max_attempts}")
+            logger.info(f"YouTube: Starting IsoClipboard attempt {attempt + 1}/{max_attempts}")
 
-                # Close existing instance if running
-                self.device.app_stop(self.isoclipboard_package)
-                time.sleep(1)
+            # Robust steps: unlock screen and press home button
+            self.device.shell("input keyevent 82")  # Unlock the screen
+            time.sleep(1)
+            self.device.shell("input keyevent 3")  # Press home button
+            time.sleep(1)
 
-                # Start app using activity manager
-                self.device.shell(
-                    f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top'
+            if not self._verify_rotation_disabled():
+                logger.error("YouTube: Rotation control lost before app start")
+                continue
+
+            self.device.app_stop(self.isoclipboard_package)
+            time.sleep(1)
+            self.device.shell(f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top')
+            time.sleep(3)
+
+            if not self._verify_rotation_disabled():
+                logger.error("YouTube: Rotation got enabled during app start")
+                continue
+
+            # Poll for confirmation up to 10 iterations (~10 seconds)
+            for _ in range(10):
+                current_app = self.device.app_current()
+                logger.info(f"YouTube: Current app info: {current_app}")
+                fetch_button = self.device.xpath(
+                    '//*[@resource-id="com.example.isolatedclipboard:id/buttonFetchUrl4"]'
                 )
-                time.sleep(3)
+                if current_app.get('package') == self.isoclipboard_package or fetch_button.exists:
+                    logger.info("YouTube: IsoClipboard successfully brought to foreground")
+                    return True
 
-                # Verify rotation is still disabled
-                if not self._verify_rotation_disabled():
-                    logger.error("Rotation got enabled during app start")
-                    continue
+                logger.warning("YouTube: IsoClipboard not in foreground, retrying...")
 
-                # Multiple verification attempts for foreground status
-                for _ in range(3):
-                    current_app = self.device.app_current()
-                    if current_app.get('package') == self.isoclipboard_package:
-                        logger.info("IsoClipboard successfully brought to foreground")
-                        return True
-                    logger.warning("IsoClipboard not in foreground, retrying...")
-                    self.device.press("home")
-                    time.sleep(1)
-                    self.device.shell(
-                        f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top'
-                    )
-                    time.sleep(2)
+                # Before retrying, run the robust keyevent steps again
+                self.device.shell("input keyevent 82")
+                time.sleep(1)
+                self.device.shell("input keyevent 3")
+                time.sleep(1)
+                self.device.press("home")
+                time.sleep(1)
+                self.device.shell(f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top')
+                time.sleep(2)
 
-                logger.error(f"Failed to bring IsoClipboard to foreground on attempt {attempt + 1}")
-
-            except Exception as e:
-                logger.error(f"Error on attempt {attempt + 1}: {e}")
-
+            logger.error(f"YouTube: Failed to bring IsoClipboard to foreground on attempt {attempt + 1}")
             time.sleep(2)
-
-        logger.error("All attempts to start IsoClipboard safely failed")
+        logger.error("YouTube: All attempts to start IsoClipboard safely failed")
         return False
 
     def _handle_fetch_operation(self) -> bool:
@@ -643,8 +679,14 @@ class YouTubeMusicController(BaseController, PopupMonitorMixin):
 
     def prepare_for_action(self) -> bool:
         try:
-            logger.info("Preparing YouTube Music without force-stop...")
+            # Check if app needs restart due to popup handling
+            if self.needs_restart("YouTube Music"):
+                logger.info("YouTube Music needs restart after system popup handling")
+                self.clear_restart_flag("YouTube Music")
+                # Start app again
+                return self.start_app()
 
+            logger.info("Preparing YouTube Music without force-stop...")
             # 1. Lock the device in portrait mode at the system level
             logger.info("Disabling auto-rotate...")
             self.device.shell("settings put system accelerometer_rotation 0")

@@ -2,10 +2,13 @@
 
 import sys
 import time
-from typing import Dict, Callable, Optional
+import threading
+import datetime
+from typing import Dict, Callable, Optional, Any, List
 from src.controllers.device_controller import DeviceController
 from src.utils.logging_utils import setup_logger
 from src.automation.multi_app_scheduler import MultiMusicAutomation
+from src.constants.app_configs import YouTubeMusicConfig, AppleMusicConfig, AmazonMusicConfig, TidalMusicConfig
 
 logger = setup_logger(__name__)
 
@@ -72,19 +75,26 @@ class CLI:
             't5': ('Tidal Music: Like Current Song',
                    lambda: self.controller.app_controllers['tidal_music'].like_current_song()),
 
+            # Beatport Controls
+            'b1': ('Beatport: Play/Pause',
+                   lambda: self.controller.app_controllers['beatport_music'].play_pause()),
+            'b2': ('Beatport: Next Track',
+                   lambda: self.controller.app_controllers['beatport_music'].next_track()),
+            'b3': ('Beatport: Previous Track',
+                   lambda: self.controller.app_controllers['beatport_music'].previous_track()),
+            'b4': ('Beatport: Initial Setup',
+                   lambda: self.controller.app_controllers['beatport_music'].handle_initial_setup()),
+            'b5': ('Beatport: Like Current Song',
+                   lambda: self.controller.app_controllers['beatport_music'].like_current_song()),
+            'b6': ('Beatport: Show Playtime Status',
+                   lambda: self.controller.app_controllers['beatport_music'].check_daily_limit_reached()),
+
             # Single App Automation
             'sy': ('Start YouTube Music Only', self.start_youtube_automation),
             'sa': ('Start Apple Music Only', self.start_apple_automation),
             'sm': ('Start Amazon Music Only', self.start_amazon_automation),
             'st': ('Start Tidal Music Only', self.start_tidal_automation),
-
-            # Dual App Automation
-            'sya': ('Start YouTube & Apple Music', self.start_youtube_apple_automation),
-            'sym': ('Start YouTube & Amazon Music', self.start_youtube_amazon_automation),
-            'syt': ('Start YouTube & Tidal Music', self.start_youtube_tidal_automation),
-            'sam': ('Start Apple & Amazon Music', self.start_apple_amazon_automation),
-            'sat': ('Start Apple & Tidal Music', self.start_apple_tidal_automation),
-            'smt': ('Start Amazon & Tidal Music', self.start_amazon_tidal_automation),
+            'sb': ('Start Beatport Only', self.start_beatport_automation),
 
             # All Apps Automation
             'sall': ('Start All Apps', self.start_all_automation),
@@ -100,6 +110,44 @@ class CLI:
             'r': ('Check Running Music Apps', self.controller.check_running_music_apps),
             'q': ('Quit', None)
         }
+
+    def start_beatport_automation(self) -> bool:
+        """Start Beatport automation only."""
+        try:
+            # First ensure initial setup is done
+            beatport_controller = self.controller.app_controllers[
+                'beatport_music']
+            # Check if daily limit is already reached
+            if beatport_controller.check_daily_limit_reached():
+                logger.warning("Cannot start Beatport automation - daily limit already reached")
+                return False
+
+            # Perform initial setup if needed
+            if not beatport_controller.is_running():
+                logger.info("Performing initial Beatport setup...")
+                if not beatport_controller.handle_initial_setup():
+                    logger.error("Failed to set up Beatport")
+                    return False
+
+            # Initialize automation
+            if not self.automation:
+                logger.info("Initializing Beatport automation...")
+                self.automation = MultiMusicAutomation(
+                    beatport_controller=beatport_controller
+                )
+
+            success = self.automation.start_beatport_only()
+            if success:
+                logger.info("Beatport automation started successfully")
+                return True
+            else:
+                logger.error("Failed to start Beatport automation")
+                self.automation = None
+                return False
+        except Exception as e:
+            logger.error(f"Failed to start Beatport automation: {e}")
+            self.automation = None
+            return False
 
     def start_tidal_automation(self) -> bool:
         """Start Tidal Music automation only."""
@@ -119,72 +167,6 @@ class CLI:
                 return False
         except Exception as e:
             logger.error(f"Failed to start Tidal Music automation: {e}")
-            self.automation = None
-            return False
-
-    def start_youtube_tidal_automation(self) -> bool:
-        """Start automation for YouTube Music and Tidal Music."""
-        try:
-            if not self.automation:
-                logger.info("Initializing YouTube & Tidal Music automation...")
-                self.automation = MultiMusicAutomation(
-                    youtube_controller=self.controller.app_controllers['youtube_music'],
-                    tidal_controller=self.controller.app_controllers['tidal_music']
-                )
-            success = self.automation.start_automation()
-            if success:
-                logger.info("YouTube & Tidal Music automation started successfully")
-                return True
-            else:
-                logger.error("Failed to start YouTube & Tidal Music automation")
-                self.automation = None
-                return False
-        except Exception as e:
-            logger.error(f"Failed to start YouTube & Tidal Music automation: {e}")
-            self.automation = None
-            return False
-
-    def start_apple_tidal_automation(self) -> bool:
-        """Start automation for Apple Music and Tidal Music."""
-        try:
-            if not self.automation:
-                logger.info("Initializing Apple & Tidal Music automation...")
-                self.automation = MultiMusicAutomation(
-                    apple_controller=self.controller.app_controllers['apple_music'],
-                    tidal_controller=self.controller.app_controllers['tidal_music']
-                )
-            success = self.automation.start_automation()
-            if success:
-                logger.info("Apple & Tidal Music automation started successfully")
-                return True
-            else:
-                logger.error("Failed to start Apple & Tidal Music automation")
-                self.automation = None
-                return False
-        except Exception as e:
-            logger.error(f"Failed to start Apple & Tidal Music automation: {e}")
-            self.automation = None
-            return False
-
-    def start_amazon_tidal_automation(self) -> bool:
-        """Start automation for Amazon Music and Tidal Music."""
-        try:
-            if not self.automation:
-                logger.info("Initializing Amazon & Tidal Music automation...")
-                self.automation = MultiMusicAutomation(
-                    amazon_controller=self.controller.app_controllers['amazon_music'],
-                    tidal_controller=self.controller.app_controllers['tidal_music']
-                )
-            success = self.automation.start_automation()
-            if success:
-                logger.info("Amazon & Tidal Music automation started successfully")
-                return True
-            else:
-                logger.error("Failed to start Amazon & Tidal Music automation")
-                self.automation = None
-                return False
-        except Exception as e:
-            logger.error(f"Failed to start Amazon & Tidal Music automation: {e}")
             self.automation = None
             return False
 
@@ -252,79 +234,15 @@ class CLI:
             self.automation = None
             return False
 
-    def start_youtube_apple_automation(self) -> bool:
-        """Start automation for YouTube Music and Apple Music."""
-        try:
-            if not self.automation:
-                logger.info("Initializing YouTube & Apple Music automation...")
-                self.automation = MultiMusicAutomation(
-                    youtube_controller=self.controller.app_controllers['youtube_music'],
-                    apple_controller=self.controller.app_controllers['apple_music']
-                )
-            success = self.automation.start_automation()
-            if success:
-                logger.info("YouTube & Apple Music automation started successfully")
-                return True
-            else:
-                logger.error("Failed to start YouTube & Apple Music automation")
-                self.automation = None
-                return False
-        except Exception as e:
-            logger.error(f"Failed to start YouTube & Apple Music automation: {e}")
-            self.automation = None
-            return False
-
-    def start_youtube_amazon_automation(self) -> bool:
-        """Start automation for YouTube Music and Amazon Music."""
-        try:
-            if not self.automation:
-                logger.info("Initializing YouTube & Amazon Music automation...")
-                self.automation = MultiMusicAutomation(
-                    youtube_controller=self.controller.app_controllers['youtube_music'],
-                    amazon_controller=self.controller.app_controllers['amazon_music']
-                )
-            success = self.automation.start_automation()
-            if success:
-                logger.info("YouTube & Amazon Music automation started successfully")
-                return True
-            else:
-                logger.error("Failed to start YouTube & Amazon Music automation")
-                self.automation = None
-                return False
-        except Exception as e:
-            logger.error(f"Failed to start YouTube & Amazon Music automation: {e}")
-            self.automation = None
-            return False
-
-    def start_apple_amazon_automation(self) -> bool:
-        """Start automation for Apple Music and Amazon Music."""
-        try:
-            if not self.automation:
-                logger.info("Initializing Apple & Amazon Music automation...")
-                self.automation = MultiMusicAutomation(
-                    apple_controller=self.controller.app_controllers['apple_music'],
-                    amazon_controller=self.controller.app_controllers['amazon_music']
-                )
-            success = self.automation.start_automation()
-            if success:
-                logger.info("Apple & Amazon Music automation started successfully")
-                return True
-            else:
-                logger.error("Failed to start Apple & Amazon Music automation")
-                self.automation = None
-                return False
-        except Exception as e:
-            logger.error(f"Failed to start Apple & Amazon Music automation: {e}")
-            self.automation = None
-            return False
-
     def start_all_automation(self, *args) -> bool:
         """
         Start automation for all apps with optional exclusions.
-        Example usage:
-            sall                          -> starts all apps
-            sall --exclude tidal          -> exclude Tidal Music
-            sall --exclude -tidal -amazon -> exclude Tidal and Amazon Music
+
+        Examples:
+            sall                      -> starts all apps
+            sall --exclude beatport   -> starts all apps except Beatport
+            sall --exclude tidal      -> starts all apps except Tidal Music
+            sall --exclude beatport tidal -> starts all apps except Beatport and Tidal
         """
         # If help flag is provided, print usage instructions.
         if args and args[0] in ['-h', '--help']:
@@ -333,41 +251,41 @@ class CLI:
 
         exclusions = set()
         if args:
-            # Validate that the first argument is exactly '--exclude'
-            if args[0] != '--exclude':
-                print(f"Error: unrecognized option: {args[0]}")
-                print(self.start_all_automation.__doc__)
-                return False
-
-            # Process exclusion tokens
-            for token in args[1:]:
-                token_clean = token.lstrip('-').lower()  # Normalize token
-                exclusions.add(token_clean)
+            # Parse all arguments as potential exclusions (simpler syntax)
+            for arg in args:
+                if arg == '--exclude':
+                    continue  # Skip the --exclude flag itself
+                exclusion = arg.lower().strip('-')  # Remove any leading hyphens and normalize
+                exclusions.add(exclusion)
 
         logger.info(f"Starting automation with exclusions: {exclusions}")
 
         # Map exclusions to controllers (adjust token names as needed)
-        yt_controller = None if 'youtube' in exclusions or 'ytm' in exclusions else self.controller.app_controllers.get(
-            'youtube_music')
-        apple_controller = None if 'apple' in exclusions else self.controller.app_controllers.get('apple_music')
-        amazon_controller = None if 'amazon' in exclusions else self.controller.app_controllers.get('amazon_music')
+        yt_controller = None if any(
+            x in ['youtube', 'ytm', 'yt'] for x in exclusions) else self.controller.app_controllers.get('youtube_music')
+        apple_controller = None if any(
+            x in ['apple', 'am'] for x in exclusions) else self.controller.app_controllers.get('apple_music')
+        amazon_controller = None if any(
+            x in ['amazon', 'amz'] for x in exclusions) else self.controller.app_controllers.get('amazon_music')
         tidal_controller = None if 'tidal' in exclusions else self.controller.app_controllers.get('tidal_music')
+        beatport_controller = None if 'beatport' in exclusions else self.controller.app_controllers.get('beatport_music')
 
         # Initialize automation with the filtered controllers.
         if not self.automation:
-            logger.info("Initializing all music apps automation...")
+            logger.info("Initializing music apps automation...")
             self.automation = MultiMusicAutomation(
                 youtube_controller=yt_controller,
                 apple_controller=apple_controller,
                 amazon_controller=amazon_controller,
-                tidal_controller=tidal_controller
+                tidal_controller=tidal_controller,
+                beatport_controller=beatport_controller
             )
         success = self.automation.start_automation()
         if success:
-            logger.info("All music apps automation started successfully")
+            logger.info("Music apps automation started successfully")
             return True
         else:
-            logger.error("Failed to start all music apps automation")
+            logger.error("Failed to start music apps automation")
             self.automation = None
             return False
 
@@ -423,6 +341,15 @@ class CLI:
                             logger.info(f"Last action: {status['last_tidal_action']}")
                         if 'next_tidal_iso' in status:
                             logger.info(f"Next IsoClipboard: {status['next_tidal_iso']}")
+
+                    if 'Beatport' in status['active_apps']:
+                        logger.info("Beatport Status:")
+                        if 'beatport_hours_played' in status:
+                            logger.info(
+                                f"Hours played today: {status['beatport_hours_played']} / {status['beatport_daily_limit']}")
+                            logger.info(f"Hours remaining: {status['beatport_hours_remaining']}")
+                            if status['beatport_limit_reached']:
+                                logger.warning("DAILY LIMIT REACHED - Playback restricted")
             else:
                 logger.info("Automation status: Not initialized")
             return True
@@ -496,16 +423,25 @@ class CLI:
             if key.startswith('t'):
                 print(f"{key} - {description}")
 
-        print("\nAutomation Controls:")
-        automation_commands = ['sy', 'sa', 'sm', 'st', 'sya', 'sym', 'syt', 'sam',
-                               'sat', 'smt', 'sall', 'stop', 'pause', 'resume', 'status']
+        print("\nBeatport Controls:")
         for key, (description, _) in self.commands.items():
-            if key in automation_commands:
+            if key.startswith('b'):
                 print(f"{key} - {description}")
+
+        print("\nAutomation Controls:")
+        # Only show single-app and all-app automation commands
+        single_app_commands = ['sy', 'sa', 'sm', 'st', 'sb', 'sall', 'stop', 'pause', 'resume', 'status']
+        for key, (description, _) in self.commands.items():
+            if key in single_app_commands:
+                print(f"{key} - {description}")
+
+        # Show special note about sall --exclude option
+        print("\nNote: Use 'sall --exclude app1 app2' to start all apps except specified ones.")
+        print("Example: 'sall --exclude beatport tidal' starts all apps except Beatport and Tidal")
 
         print("\nGeneral Commands:")
         for key, (description, _) in self.commands.items():
-            if not key.startswith(('y', 'a', 'm', 't', 's')):
+            if not key.startswith(('y', 'a', 'm', 't', 'b', 's')):
                 print(f"{key} - {description}")
 
     def run(self):

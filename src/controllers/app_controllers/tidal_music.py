@@ -1,5 +1,4 @@
 # src/controllers/app_controllers/tidal_music.py
-
 import time
 from typing import Dict
 import uiautomator2 as u2
@@ -16,8 +15,10 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
 
     def __init__(self, device: u2.Device):
         """Initialize Tidal Music controller."""
-        super().__init__(device)
+        # Initialize both parent classes properly
+        BaseController.__init__(self, device)
         PopupMonitorMixin.__init__(self)
+
         self.package_name = TidalMusicConfig.PACKAGE_NAME
         self.app_name = TidalMusicConfig.APP_NAME
         self.isoclipboard_package = "com.example.isolatedclipboard"
@@ -29,17 +30,20 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
         # Start popup monitor
         self.start_popup_monitor()
 
+        # Save initial rotation state for later restoration
+        self.initial_rotation_state = self.get_rotation_settings()
+
         # Set up screen settings
         if not self.setup_screen_settings():
             logger.warning("Failed to set up screen settings during initialization")
-
-        # Optionally, capture initial rotation state for later restoration (only at session end)
-        self.initial_rotation_state = self.get_rotation_settings()
 
     def __del__(self):
         """Cleanup when controller is deleted."""
         try:
             self.stop_popup_monitor()
+            # Restore rotation state if needed
+            if hasattr(self, 'initial_rotation_state') and self.initial_rotation_state:
+                self._restore_rotation_state(self.initial_rotation_state)
         except Exception as e:
             logger.error(f"Error in cleanup: {e}")
 
@@ -167,43 +171,55 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def _start_isoclipboard_safely(self) -> bool:
-        """Start IsoClipboard app with timing and safety checks."""
         max_attempts = 3
         for attempt in range(max_attempts):
-            try:
-                logger.info(f"Starting IsoClipboard attempt {attempt + 1}/{max_attempts}")
-                if not self._verify_rotation_disabled():
-                    logger.error("Rotation control lost before app start")
-                    continue
+            logger.info(f"Tidal: Starting IsoClipboard attempt {attempt + 1}/{max_attempts}")
 
-                self.device.app_stop(self.isoclipboard_package)
-                time.sleep(3)
-                self.device.shell(
-                    f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top'
-                )
-                time.sleep(5)
-                if not self._verify_rotation_disabled():
-                    logger.error("Rotation got enabled during app start")
-                    continue
+            # Robust steps: unlock screen and press home button
+            self.device.shell("input keyevent 82")
+            time.sleep(1)
+            self.device.shell("input keyevent 3")
+            time.sleep(1)
 
-                for check in range(3):
-                    current_app = self.device.app_current()
-                    if current_app.get('package') == self.isoclipboard_package:
-                        logger.info("IsoClipboard successfully brought to foreground")
-                        time.sleep(2)
-                        return True
-                    logger.warning(f"IsoClipboard not in foreground (check {check + 1}/3), retrying...")
-                    self.device.press("home")
-                    time.sleep(2)
-                    self.device.shell(
-                        f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top'
-                    )
-                    time.sleep(3)
-                logger.error(f"Failed to bring IsoClipboard to foreground on attempt {attempt + 1}")
-            except Exception as e:
-                logger.error(f"Error on attempt {attempt + 1}: {e}")
+            if not self._verify_rotation_disabled():
+                logger.error("Tidal: Rotation control lost before app start")
+                continue
+
+            self.device.app_stop(self.isoclipboard_package)
+            time.sleep(1)
+            self.device.shell(f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top')
             time.sleep(3)
-        logger.error("All attempts to start IsoClipboard safely failed")
+
+            if not self._verify_rotation_disabled():
+                logger.error("Tidal: Rotation got enabled during app start")
+                continue
+
+            # Poll for confirmation up to 10 iterations (~10 seconds)
+            for _ in range(10):
+                current_app = self.device.app_current()
+                logger.info(f"Tidal: Current app info: {current_app}")
+                fetch_button = self.device.xpath(
+                    '//*[@resource-id="com.example.isolatedclipboard:id/buttonFetchUrl7"]'
+                )
+                if current_app.get('package') == self.isoclipboard_package or fetch_button.exists:
+                    logger.info("Tidal: IsoClipboard successfully brought to foreground")
+                    return True
+
+                logger.warning("Tidal: IsoClipboard not in foreground, retrying...")
+
+                # Retry with robust keyevent steps
+                self.device.shell("input keyevent 82")
+                time.sleep(1)
+                self.device.shell("input keyevent 3")
+                time.sleep(1)
+                self.device.press("home")
+                time.sleep(1)
+                self.device.shell(f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top')
+                time.sleep(2)
+
+            logger.error(f"Tidal: Failed to bring IsoClipboard to foreground on attempt {attempt + 1}")
+            time.sleep(2)
+        logger.error("Tidal: All attempts to start IsoClipboard safely failed")
         return False
 
     def _handle_fetch_operation(self) -> bool:
@@ -274,6 +290,13 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
     def prepare_for_action(self) -> bool:
         """Streamlined preparation before performing an action."""
         try:
+            # Check if app needs restart due to popup handling
+            if self.needs_restart("Tidal Music"):
+                logger.info("Restarting Tidal after force-close")
+                self.clear_restart_flag("Tidal Music")
+                time.sleep(1)
+                return self.start_app()
+
             if not self.ensure_screen_active():
                 logger.error("Failed to ensure screen active before action")
                 return False
@@ -281,16 +304,12 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
             if self._verify_app_running():
                 return True
 
-            if self.needs_restart("Tidal Music"):
-                logger.info("Restarting Tidal after force-close")
-                self.clear_restart_flag("Tidal Music")
-                time.sleep(1)
-
             if not self.start_app():
                 return False
 
             time.sleep(1)
             return self._verify_app_running()
+
         except Exception as e:
             logger.error(f"Error preparing for action: {e}")
             return False

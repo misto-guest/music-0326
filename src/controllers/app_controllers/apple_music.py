@@ -18,8 +18,11 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
 
     def __init__(self, device: u2.Device):
         """Initialize Apple Music controller."""
-        super().__init__(device)
+        # Initialize both parent classes properly
+        BaseController.__init__(self, device)
         PopupMonitorMixin.__init__(self)
+
+        # App configuration
         self.package_name = AppleMusicConfig.PACKAGE_NAME
         self.app_name = AppleMusicConfig.APP_NAME
         self.isoclipboard_package = "com.example.isolatedclipboard"
@@ -31,6 +34,9 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
         # Start popup monitor
         self.start_popup_monitor()
 
+        # Save initial rotation state for later restoration
+        self.initial_rotation_state = self.get_rotation_settings()
+
         # Set up screen settings during initialization
         if not self.setup_screen_settings():
             logger.warning("Failed to set up screen settings during initialization")
@@ -39,6 +45,9 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
         """Cleanup when controller is deleted."""
         try:
             self.stop_popup_monitor()
+            # Restore rotation state if needed
+            if hasattr(self, 'initial_rotation_state') and self.initial_rotation_state:
+                self._restore_rotation_state(self.initial_rotation_state)
         except Exception as e:
             logger.error(f"Error in cleanup: {e}")
 
@@ -223,6 +232,13 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
 
     def prepare_for_action(self) -> bool:
         try:
+            # Check if app needs restart due to popup handling
+            if self.needs_restart("Apple Music"):
+                logger.info("Apple Music needs restart after system popup handling")
+                self.clear_restart_flag("Apple Music")
+                # Start app again
+                return self.start_app()
+
             if not self.ensure_screen_active():
                 logger.error("Failed to ensure screen is active before action.")
                 return False
@@ -265,7 +281,6 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                         return self.start_app()
                 else:
                     logger.info("Apple Music found in recents. Trying multiple launch methods.")
-
                     # Try monkey command first
                     command = "monkey -p com.apple.android.music -c android.intent.category.LAUNCHER 1"
                     logger.info(f"Executing monkey command: {command}")
@@ -657,45 +672,53 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
     def _start_isoclipboard_safely(self) -> bool:
         max_attempts = 3
         for attempt in range(max_attempts):
-            try:
-                logger.info(f"Starting IsoClipboard attempt {attempt + 1}/{max_attempts}")
+            logger.info(f"Apple Music: Starting IsoClipboard attempt {attempt + 1}/{max_attempts}")
 
-                if not self._verify_rotation_disabled():
-                    logger.error("Rotation control lost before app start")
-                    continue
+            # Robust steps: unlock screen and press home button
+            self.device.shell("input keyevent 82")
+            time.sleep(1)
+            self.device.shell("input keyevent 3")
+            time.sleep(1)
 
-                self.device.app_stop(self.isoclipboard_package)
-                time.sleep(1)
-                self.device.shell(
-                    f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top'
+            if not self._verify_rotation_disabled():
+                logger.error("Apple Music: Rotation control lost before app start")
+                continue
+
+            self.device.app_stop(self.isoclipboard_package)
+            time.sleep(1)
+            self.device.shell(f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top')
+            time.sleep(3)
+
+            if not self._verify_rotation_disabled():
+                logger.error("Apple Music: Rotation got enabled during app start")
+                continue
+
+            # Poll for confirmation up to 10 iterations (~10 seconds)
+            for _ in range(10):
+                current_app = self.device.app_current()
+                logger.info(f"Apple Music: Current app info: {current_app}")
+                fetch_button = self.device.xpath(
+                    '//*[@resource-id="com.example.isolatedclipboard:id/buttonFetchUrl2"]'
                 )
-                time.sleep(3)
+                if current_app.get('package') == self.isoclipboard_package or fetch_button.exists:
+                    logger.info("Apple Music: IsoClipboard successfully brought to foreground")
+                    return True
 
-                if not self._verify_rotation_disabled():
-                    logger.error("Rotation got enabled during app start")
-                    continue
+                logger.warning("Apple Music: IsoClipboard not in foreground, retrying...")
 
-                for _ in range(3):
-                    current_app = self.device.app_current()
-                    if current_app.get('package') == self.isoclipboard_package:
-                        logger.info("IsoClipboard successfully brought to foreground")
-                        return True
-                    logger.warning("IsoClipboard not in foreground, retrying...")
-                    self.device.press("home")
-                    time.sleep(1)
-                    self.device.shell(
-                        f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top'
-                    )
-                    time.sleep(2)
+                # Retry with robust keyevent steps
+                self.device.shell("input keyevent 82")
+                time.sleep(1)
+                self.device.shell("input keyevent 3")
+                time.sleep(1)
+                self.device.press("home")
+                time.sleep(1)
+                self.device.shell(f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top')
+                time.sleep(2)
 
-                logger.error(f"Failed to bring IsoClipboard to foreground on attempt {attempt + 1}")
-
-            except Exception as e:
-                logger.error(f"Error on attempt {attempt + 1}: {e}")
-
+            logger.error(f"Apple Music: Failed to bring IsoClipboard to foreground on attempt {attempt + 1}")
             time.sleep(2)
-
-        logger.error("All attempts to start IsoClipboard safely failed")
+        logger.error("Apple Music: All attempts to start IsoClipboard safely failed")
         return False
 
     def _handle_fetch_operation(self) -> bool:
