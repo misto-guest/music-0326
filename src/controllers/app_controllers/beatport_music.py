@@ -1,5 +1,7 @@
 # src/controllers/app_controllers/beatport_music.py
 
+import json
+import os
 import time
 from datetime import datetime, date, timedelta
 from typing import Dict
@@ -20,6 +22,35 @@ class BeatportMusicConfig:
 logger = setup_logger(__name__)
 
 
+def save_playtime(device_id, playtime_seconds, date_str):
+    """Save playtime data to a simple file."""
+    data = {
+        "device_id": device_id,
+        "playtime_seconds": playtime_seconds,
+        "date": date_str
+    }
+
+    # Create a simple filename with device ID
+    filename = f"beatport_{device_id}_playtime.json"
+
+    with open(filename, 'w') as f:
+        json.dump(data, f)
+
+
+def load_playtime(device_id):
+    """Load playtime data from file."""
+    filename = f"beatport_{device_id}_playtime.json"
+
+    if not os.path.exists(filename):
+        return None, None
+
+    try:
+        with open(filename, 'r') as f:
+            data = json.load(f)
+            return data.get("playtime_seconds", 0), data.get("date", None)
+    except:
+        return None, None
+
 class BeatportMusicController(BaseController, PopupMonitorMixin):
     """Controller for Beatport music automation with daily 6-hour playtime limit."""
 
@@ -33,12 +64,24 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
         self.package_name = BeatportMusicConfig.PACKAGE_NAME
         self.app_name = BeatportMusicConfig.APP_NAME
 
+        # Get device ID for persistence
+        try:
+            self.device_id = device.serial
+        except:
+            self.device_id = "unknown"
+
         # Time tracking attributes
         self.daily_limit_hours = 6
         self.daily_playtime_seconds = 0
         self.last_start_time = None
         self.is_playing = False
         self.last_tracking_date = date.today()
+
+        # Load saved playtime if available and from today
+        saved_playtime, saved_date = load_playtime(self.device_id)
+        if saved_playtime is not None and saved_date == date.today().isoformat():
+            self.daily_playtime_seconds = saved_playtime
+            logger.info(f"Loaded saved playtime: {saved_playtime / 3600:.2f} hours")
 
         # Register for popup monitoring
         self.register_app_for_monitoring("Beatport Music")
@@ -155,6 +198,13 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
             # Reset counters
             self.daily_playtime_seconds = 0
 
+            # Save the reset state
+            save_playtime(
+                self.device_id,
+                self.daily_playtime_seconds,
+                self.last_tracking_date.isoformat()
+            )
+
             # If currently playing, start fresh tracking from now
             if self.is_playing:
                 self.last_start_time = datetime.now()
@@ -172,6 +222,13 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
 
             self.daily_playtime_seconds += elapsed
             hours_played = self.daily_playtime_seconds / 3600
+
+            # Save playtime data after updating
+            save_playtime(
+                self.device_id,
+                self.daily_playtime_seconds,
+                self.last_tracking_date.isoformat()
+            )
 
             logger.info(f"Updated playtime: {hours_played:.2f}h (+{elapsed / 60:.2f}min)")
 
