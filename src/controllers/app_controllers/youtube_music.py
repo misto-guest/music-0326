@@ -16,8 +16,11 @@ class YouTubeMusicController(BaseController, PopupMonitorMixin):
 
     def __init__(self, device: u2.Device):
         """Initialize YouTube Music controller."""
-        super().__init__(device)
+        # Initialize both parent classes properly
+        BaseController.__init__(self, device)
         PopupMonitorMixin.__init__(self)
+
+        # App configuration
         self.package_name = YouTubeMusicConfig.PACKAGE_NAME
         self.app_name = YouTubeMusicConfig.APP_NAME
         self.isoclipboard_package = IsoClipboardConfig.PACKAGE_NAME
@@ -29,12 +32,39 @@ class YouTubeMusicController(BaseController, PopupMonitorMixin):
         # Start popup monitor
         self.start_popup_monitor()
 
+        # Save initial rotation state for later restoration
+        self.initial_rotation_state = self.get_rotation_settings()
+
+        # Set up screen settings for better reliability
+        self.setup_screen_settings()
+
     def __del__(self):
         """Cleanup when controller is deleted."""
         try:
             self.stop_popup_monitor()
+            # Restore rotation state if needed
+            if hasattr(self, 'initial_rotation_state') and self.initial_rotation_state:
+                self._restore_rotation_state(self.initial_rotation_state)
         except Exception as e:
             logger.error(f"Error in cleanup: {e}")
+
+    def setup_screen_settings(self) -> bool:
+        """Setup screen timeout and stay-on settings."""
+        try:
+            logger.info("Setting up screen settings")
+            self.device.shell('settings put system screen_off_timeout 1800000')
+            self.device.shell('settings put global stay_on_while_plugged_in 3')
+            timeout = self.device.shell('settings get system screen_off_timeout')
+            if '1800000' in str(timeout):
+                logger.info("Screen settings configured successfully")
+                return True
+            else:
+                logger.error("Failed to verify screen settings")
+                return False
+        except Exception as e:
+            logger.error(f"Error setting up screen settings: {e}")
+            return False
+
 
     def get_rotation_settings(self) -> Dict[str, str]:
         """Get current rotation settings."""
