@@ -1,5 +1,4 @@
 # src/controllers/app_controllers/amazon_music.py
-
 import time
 from typing import Dict
 import uiautomator2 as u2
@@ -16,8 +15,10 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
 
     def __init__(self, device: u2.Device):
         """Initialize Amazon Music controller."""
-        super().__init__(device)
+        # Initialize both parent classes properly
+        BaseController.__init__(self, device)
         PopupMonitorMixin.__init__(self)
+
         self.package_name = AmazonMusicConfig.PACKAGE_NAME
         self.app_name = AmazonMusicConfig.APP_NAME
         self.isoclipboard_package = "com.example.isolatedclipboard"
@@ -29,6 +30,9 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
         # Start popup monitor
         self.start_popup_monitor()
 
+        # Save initial rotation state for later restoration
+        self.initial_rotation_state = self.get_rotation_settings()
+
         # Set up screen settings
         if not self.setup_screen_settings():
             logger.warning("Failed to set up screen settings during initialization")
@@ -37,6 +41,9 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
         """Cleanup when controller is deleted."""
         try:
             self.stop_popup_monitor()
+            # Restore rotation state if needed
+            if hasattr(self, 'initial_rotation_state') and self.initial_rotation_state:
+                self._restore_rotation_state(self.initial_rotation_state)
         except Exception as e:
             logger.error(f"Error in cleanup: {e}")
 
@@ -315,17 +322,19 @@ class AmazonMusicController(BaseController, PopupMonitorMixin):
     def prepare_for_action(self) -> bool:
         """Streamlined preparation for actions."""
         try:
+            # Check if app needs restart due to popup handling
+            if self.needs_restart("Amazon Music"):
+                logger.info("Amazon Music needs restart after system popup handling")
+                self.clear_restart_flag("Amazon Music")
+                # Start app again
+                return self.start_app()
+
             if not self.ensure_screen_active():
                 logger.error("Failed to ensure screen active before action")
                 return False
 
             if self._verify_app_running():
                 return True
-
-            if self.needs_restart("Amazon Music"):
-                logger.info("Restarting Amazon Music after force-close")
-                self.clear_restart_flag("Amazon Music")
-                time.sleep(1)
 
             if not self.start_app():
                 return False
