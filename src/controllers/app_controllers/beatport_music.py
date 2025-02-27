@@ -3,6 +3,7 @@
 import json
 import os
 import time
+import threading
 from datetime import datetime, date, timedelta
 from typing import Dict
 import uiautomator2 as u2
@@ -77,6 +78,7 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
         self.is_playing = False
         self.is_stopping = False
         self.last_tracking_date = date.today()
+        self.state_lock = threading.Lock()
 
         # Load saved playtime if available and from today
         saved_playtime, saved_date = load_playtime(self.device_id)
@@ -213,7 +215,10 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
 
     def _update_playtime(self) -> None:
         """Update accumulated playtime and check limit."""
-        if self.is_playing and self.last_start_time:
+        if not self.is_playing or self.is_stopping or not self.last_start_time:
+            return  # Immediate exit if not playing or already stopping
+
+        try:
             # First check for day change
             self._reset_daily_playtime()
 
@@ -222,7 +227,6 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
             elapsed = (current_time - self.last_start_time).total_seconds()
 
             # Sanity check: don't add unreasonable amounts of playtime
-            # (prevents erroneous huge jumps in time tracking)
             if elapsed > 3600:  # If more than an hour has passed, something is wrong
                 logger.warning(f"Suspicious elapsed time: {elapsed / 60:.2f} minutes. Capping at 5 minutes.")
                 elapsed = 300  # Cap at 5 minutes
@@ -239,13 +243,19 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
 
             logger.info(f"Updated playtime: {hours_played:.2f}h (+{elapsed / 60:.2f}min)")
 
-            # Check if we just crossed the limit - use a static flag to prevent recursion
+            # Check if we just crossed the limit
             if hours_played >= self.daily_limit_hours:
                 logger.warning("Daily limit reached during playback update")
-                self.force_stop_on_limit(prevent_recursion=True)
+                # Immediately mark as not playing to prevent further updates
+                self.is_playing = False
+                self.is_stopping = True
+                # Force stop on separate thread to avoid recursion
+                threading.Thread(target=self._safe_force_stop).start()
             else:
                 # Only update start time if we're continuing
                 self.last_start_time = current_time
+        except Exception as e:
+            logger.error(f"Error updating playtime: {e}")
 
     def _start_playtime_tracking(self) -> None:
         """Begin counting time with proper state initialization."""
@@ -296,38 +306,32 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
 
     def force_stop_on_limit(self, prevent_recursion=False) -> bool:
         """Force stop Beatport when daily limit is reached."""
-        try:
-            # First try graceful stop via UI
-            try:
-                # Prevent recursive limit checking during this process
-                if not prevent_recursion:
-                    if self.play_pause(check_limit=False):
-                        logger.info("Successfully paused playback via UI")
-                        self._stop_playtime_tracking()
-                        return True
-                else:
-                    logger.info("Skipping UI pause due to recursion prevention")
-            except Exception as e:
-                logger.error(f"Failed to pause via UI: {e}")
+        # Prevent multiple simultaneous calls
+        if self.is_stopping:
+            logger.warning("Already in process of stopping - ignoring duplicate request")
+            return True
 
-            # If UI method fails, force stop the app
-            logger.warning("Falling back to force-stop")
+        try:
+            self.is_stopping = True
+
+            # Skip UI interactions and go straight to force stop
+            logger.warning("Force stopping app due to daily limit")
             self.device.app_stop(self.package_name)
             time.sleep(1)
 
-            # Update tracking state
-            self._stop_playtime_tracking()
+            # Mark as not playing immediately
             self.is_playing = False
 
-            # Verify app is actually stopped
             if self.is_running():
-                logger.warning("App still running after stop, trying force-stop")
-                return self.force_stop()
+                self.device.app_stop(self.package_name)
+                time.sleep(1)
 
+            # Reset state at the end
+            self.is_stopping = False
             logger.info("Successfully force-stopped Beatport on daily limit")
             return True
-
         except Exception as e:
+            self.is_stopping = False
             logger.error(f"Error force stopping on limit: {e}")
             return False
 
@@ -757,3 +761,23 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
         except Exception as e:
             logger.error(f"Error restarting Beatport: {e}")
             return False
+
+    def _safe_force_stop(self):
+        """Safe isolated force stop that won't trigger playtime updates."""
+        try:
+            logger.info("Safe force stop initiated")
+            # Force stop the app directly without UI interactions
+            self.device.app_stop(self.package_name)
+            time.sleep(1)
+
+            # Double-check it's really stopped
+            if self.is_running():
+                logger.warning("App still running after stop, trying force-stop again")
+                self.force_stop()
+
+            # Reset state
+            self.is_stopping = False
+            logger.info("Safe force stop completed")
+        except Exception as e:
+            logger.error(f"Error in safe force stop: {e}")
+            self.is_stopping = False
