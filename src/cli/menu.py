@@ -9,6 +9,7 @@ from src.controllers.device_controller import DeviceController
 from src.utils.logging_utils import setup_logger
 from src.automation.multi_app_scheduler import MultiMusicAutomation
 from src.constants.app_configs import YouTubeMusicConfig, AppleMusicConfig, AmazonMusicConfig, TidalMusicConfig
+from difflib import get_close_matches
 
 logger = setup_logger(__name__)
 
@@ -110,6 +111,98 @@ class CLI:
             'r': ('Check Running Music Apps', self.controller.check_running_music_apps),
             'q': ('Quit', None)
         }
+
+    def find_closest_match(self, input_param, known_params):
+        matches = get_close_matches(input_param, known_params, n=1, cutoff=0.6)
+        return matches[0] if matches else "help for available commands"
+
+    def process_command(self, command_line):
+        # Split into command and parameters
+        parts = command_line.split()
+        if not parts:
+            return
+        command = parts[0]
+        parameters = parts[1:] if len(parts) > 1 else []
+        # Add validation before executing commands
+        self.validate_command(command, parameters)
+        # Your existing command handling logic
+        if command == "sall":
+            # Process start all command
+            exclusions = set()
+            for i, param in enumerate(parameters):
+                if param == "--exclude" and i + 1 < len(parameters):
+                    exclusions.add(parameters[i + 1])
+            logger.info(f"Starting automation with exclusions: {exclusions}")
+
+    def validate_command(self, command, parameters):
+        """
+        Validate command parameters and provide helpful feedback.
+
+        Args:
+            command (str): The command to validate
+            parameters (list): List of command parameters
+
+        Returns:
+            bool: True if validation passes, False otherwise
+        """
+        # Check if command exists
+        known_commands = set(self.commands.keys())
+        if command not in known_commands:
+            closest = self.find_closest_match(command, known_commands)
+            logger.warning(f"Unknown command '{command}'. Did you mean '{closest}'?")
+            return False
+
+        # Process specific command validation
+        if command == "sall":
+            # Known parameters for sall command
+            known_params = {"--exclude", "--help", "--timeout"}
+            registered_apps = {"apple", "youtube", "beatport", "amazon", "tidal"}
+
+            # Check for parameter typos
+            i = 0
+            while i < len(parameters):
+                param = parameters[i]
+                if param.startswith("--") and param not in known_params:
+                    closest = self.find_closest_match(param, known_params)
+                    logger.warning(f"Unknown parameter '{param}'. Did you mean '{closest}'?")
+                    return False
+
+                # Check excluded app names
+                if param == "--exclude":
+                    if i + 1 >= len(parameters):
+                        logger.warning("--exclude flag requires at least one app name")
+                        return False
+
+                    # Check all apps to exclude (those after --exclude until next flag)
+                    j = i + 1
+                    found_apps = False
+                    while j < len(parameters) and not parameters[j].startswith("--"):
+                        app_name = parameters[j].lower()
+                        found_apps = True
+                        if app_name not in registered_apps:
+                            closest_app = self.find_closest_match(app_name, registered_apps)
+                            logger.warning(f"Unknown app '{app_name}'. Did you mean '{closest_app}'?")
+                            logger.info(f"Available apps: {', '.join(sorted(registered_apps))}")
+                            return False
+                        j += 1
+
+                    if not found_apps:
+                        logger.warning("No app specified after --exclude flag")
+                        return False
+
+                    # Skip ahead past the apps we just checked
+                    i = j - 1
+                i += 1
+
+        # Add validation for other commands as needed
+        elif command in ["sy", "sa", "sm", "st", "sb"]:
+            # Validate single app automation commands
+            if parameters:
+                logger.warning(f"Command '{command}' doesn't accept parameters")
+                return False
+
+        # If we got here, validation passed
+        return True
 
     def start_beatport_automation(self) -> bool:
         """Start Beatport automation only."""
@@ -237,7 +330,6 @@ class CLI:
     def start_all_automation(self, *args) -> bool:
         """
         Start automation for all apps with optional exclusions.
-
         Examples:
             sall                      -> starts all apps
             sall --exclude beatport   -> starts all apps except Beatport
@@ -249,18 +341,57 @@ class CLI:
             print(self.start_all_automation.__doc__)
             return True
 
+        valid_apps = {'youtube', 'ytm', 'yt', 'apple', 'am', 'amazon', 'amz', 'tidal', 'beatport'}
         exclusions = set()
-        if args:
-            # Parse all arguments as potential exclusions (simpler syntax)
-            for arg in args:
-                if arg == '--exclude':
-                    continue  # Skip the --exclude flag itself
-                exclusion = arg.lower().strip('-')  # Remove any leading hyphens and normalize
-                exclusions.add(exclusion)
+
+        # Check for valid flag format and arguments
+        i = 0
+        while i < len(args):
+            arg = args[i].lower()
+
+            # Handle --exclude flag
+            if arg == "--exclude":
+                # Check if we have apps to exclude
+                if i + 1 >= len(args):
+                    logger.warning("No apps specified after --exclude flag")
+                    return False
+
+                # Collect excluded apps
+                i += 1
+                exclude_found = False
+                while i < len(args) and not args[i].startswith("-"):
+                    app = args[i].lower()
+                    exclude_found = True
+                    if app not in valid_apps:
+                        logger.warning(f"Unknown app: {app}")
+                        logger.info(f"Available apps: {', '.join(sorted(valid_apps))}")
+                        return False
+                    exclusions.add(app)
+                    i += 1
+
+                if not exclude_found:
+                    logger.warning("No valid apps specified after --exclude flag")
+                    return False
+                continue
+
+            # Invalid flag format (single dash)
+            elif arg.startswith("-"):
+                if arg == "-exclude":
+                    logger.warning("Invalid flag format: -exclude, use --exclude instead")
+                else:
+                    logger.warning(f"Unknown or invalid parameter: {arg}")
+                return False
+
+            # Regular argument (should not exist in this command)
+            else:
+                logger.warning(f"Unexpected argument: {arg}. Use --exclude to specify apps to exclude.")
+                return False
+
+            i += 1
 
         logger.info(f"Starting automation with exclusions: {exclusions}")
 
-        # Map exclusions to controllers (adjust token names as needed)
+        # Map exclusions to controllers
         yt_controller = None if any(
             x in ['youtube', 'ytm', 'yt'] for x in exclusions) else self.controller.app_controllers.get('youtube_music')
         apple_controller = None if any(
@@ -268,9 +399,10 @@ class CLI:
         amazon_controller = None if any(
             x in ['amazon', 'amz'] for x in exclusions) else self.controller.app_controllers.get('amazon_music')
         tidal_controller = None if 'tidal' in exclusions else self.controller.app_controllers.get('tidal_music')
-        beatport_controller = None if 'beatport' in exclusions else self.controller.app_controllers.get('beatport_music')
+        beatport_controller = None if 'beatport' in exclusions else self.controller.app_controllers.get(
+            'beatport_music')
 
-        # Initialize automation with the filtered controllers.
+        # Initialize automation with the filtered controllers
         if not self.automation:
             logger.info("Initializing music apps automation...")
             self.automation = MultiMusicAutomation(
@@ -280,6 +412,7 @@ class CLI:
                 tidal_controller=tidal_controller,
                 beatport_controller=beatport_controller
             )
+
         success = self.automation.start_automation()
         if success:
             logger.info("Music apps automation started successfully")
@@ -475,6 +608,12 @@ class CLI:
             return True
         cmd = parts[0]
         args = parts[1:]
+
+        # Add validation here
+        if cmd == "sall":
+            # Special handling for sall command to validate exclusions
+            self.validate_command(cmd, args)
+
         if cmd not in self.commands:
             logger.warning(f"Unknown command: {command}")
             return True

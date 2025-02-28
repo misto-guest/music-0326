@@ -292,7 +292,7 @@ class MultiMusicAutomation(MutexMixin):
                 time.sleep(60)
 
     def _beatport_loop(self):
-        """Beatport loop with daily time limit checks."""
+        """Beatport loop with improved monitoring and recovery."""
         while self.running and self.beatport_controller:
             try:
                 if self.paused:
@@ -301,53 +301,46 @@ class MultiMusicAutomation(MutexMixin):
 
                 now = time.time()
 
-                # Check daily limit first
-                if self.beatport_controller.check_daily_limit_reached():
-                    # If playing, stop the playback
+                # Check daily limit first with forced update
+                if self.beatport_controller.check_daily_limit_reached(force_check=True):
+                    logger.warning("Beatport daily limit reached in main loop check")
+                    # If playing, force stop
                     if self.beatport_controller.is_playing:
-                        self._add_action(
-                            'beatport',
-                            self.beatport_controller.play_pause,
-                            'Stop (Daily Limit)'
-                        )
-                        self.action_queue.join()
-                        logger.warning("Beatport daily limit reached, stopped playback")
-
-                    # Wait for a while before checking again
+                        self.beatport_controller._safe_force_stop()
+                    # Wait a while before checking again
                     time.sleep(900)  # 15 minutes
                     continue
 
-                # If it's time to check Beatport playback status
-                if now >= self.next_beatport_check:
-                    # If not playing, start playback
-                    if not self.beatport_controller.is_playing:
-                        logger.info("Starting Beatport playback")
-                        self._add_action(
-                            'beatport',
-                            self.beatport_controller.play_pause,
-                            'Start Playback'
-                        )
+                # If not playing but should be, start fresh
+                if not self.beatport_controller.is_playing:
+                    logger.info("Beatport not playing - initiating setup")
+                    self._add_action(
+                        'beatport',
+                        self.beatport_controller.handle_initial_setup,
+                        'Initial Setup'
+                    )
+                    self.action_queue.join()
+                    # Wait a while before next action
+                    time.sleep(random.randint(180, 300))  # 3-5 minutes
+                    continue
+
+                # Only do actions at reasonable intervals if we're playing
+                # Check if it's safe to perform a new cluster of actions
+                if self._check_safe_to_act():
+                    actions = self._get_action_cluster(self.beatport_controller, "beatport")
+                    total_steps = len(actions)
+                    for i, (func, action_name) in enumerate(actions):
+                        if i > 0:
+                            intra_cluster_delay = self._get_human_delay(is_cluster=True)
+                            time.sleep(intra_cluster_delay)
+                        logger.info(f"Processing Beatport action {i + 1}/{total_steps}: {action_name}")
+                        self._add_action('beatport', func, action_name)
                         self.action_queue.join()
 
-                    # Do some random actions if safe
-                    if self._check_safe_to_act():
-                        actions = self._get_action_cluster(self.beatport_controller, "beatport")
-                        total_steps = len(actions)
-                        for i, (func, action_name) in enumerate(actions):
-                            if i > 0:
-                                intra_cluster_delay = self._get_human_delay(is_cluster=True)
-                                time.sleep(intra_cluster_delay)
-                            logger.info(f"Processing Beatport action {i + 1}/{total_steps}: {action_name}")
-                            self._add_action('beatport', func, action_name)
-                            self.action_queue.join()
-
-                    # Update the next check time (random between 10-20 minutes)
-                    check_interval = random.randint(600, 1200)
-                    self.next_beatport_check = time.time() + check_interval
-                    minutes = check_interval // 60
-                    seconds = check_interval % 60
-                    next_time = time.strftime('%H:%M:%S', time.localtime(self.next_beatport_check))
-                    logger.info(f"Next Beatport check in {minutes}m {seconds}s (at {next_time})")
+                        # Check limit after each action
+                        if self.beatport_controller.check_daily_limit_reached():
+                            logger.warning("Daily limit reached after action")
+                            break
 
                 # Use custom delay
                 delay = self.get_music_action_delay("beatport")
