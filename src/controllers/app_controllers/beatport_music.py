@@ -72,7 +72,7 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
             self.device_id = "unknown"
 
         # Time tracking attributes
-        self.daily_limit_hours = 6
+        self.daily_limit_hours = 4
         self.daily_playtime_seconds = 0
         self.last_start_time = None
         self.is_playing = False

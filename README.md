@@ -13,7 +13,7 @@ cd android_music_automation
 2. Create and activate virtual environment:
 ```bash
 python -m venv venv
-source venv/bin/activate  # On Windows use: venv\Scriptsctivate
+source venv/bin/activate  # On Windows use: venv\Scripts\activate
 ```
 
 3. Install requirements:

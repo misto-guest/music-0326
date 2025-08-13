@@ -101,25 +101,37 @@ class MultiMusicAutomation(MutexMixin):
                             controller: Union[YouTubeMusicController, AppleMusicController,
                             AmazonMusicController, TidalMusicController, BeatportMusicController],
                             app_type: str) -> List[Tuple[Callable, str]]:
-        """Generate a human-like cluster of 1-4 actions."""
+        """Generate a human-like cluster of 1-4 actions, with special handling for YouTube Music."""
         actions = []
+
+        # Special case for YouTube Music and Amazon Music - no playback control actions at all
+        if app_type == "youtube" or app_type == "amazon":
+            # Return an empty list - no actions to perform for these services
+            # They will only handle IsoClipboard actions
+            return []
+
+        # For all other apps, use the original weighted actions logic
         weighted_actions = [
             (controller.next_track, "Next track", 50),
             (controller.previous_track, "Previous track", 20),
             (controller.like_current_song, "Like song", 30)
         ]
+
         cluster_weights = {
             1: 45,  # 45% chance of single action
             2: 30,  # 30% chance of two actions
             3: 15,  # 15% chance of three actions
             4: 10  # 10% chance of four actions
         }
+
         cluster_size = random.choices(
             list(cluster_weights.keys()),
             weights=list(cluster_weights.values())
         )[0]
+
         if cluster_size > 1:
             weighted_actions[0] = (weighted_actions[0][0], weighted_actions[0][1], 70)
+
         for _ in range(cluster_size):
             action = random.choices(
                 weighted_actions,
@@ -128,6 +140,7 @@ class MultiMusicAutomation(MutexMixin):
             actions.append((action[0], action[1]))
             if action[1] == "Like song":
                 weighted_actions[0] = (weighted_actions[0][0], weighted_actions[0][1], 80)
+
         return actions
 
     def _get_human_delay(self, is_cluster: bool = False) -> int:
@@ -146,11 +159,11 @@ class MultiMusicAutomation(MutexMixin):
         base_delays = {
             "youtube": (22, 33),
             "apple": (25, 35),
-            "amazon": (27, 37),
+            "amazon": (20, 25),
             "tidal": (24, 34)
         }
         base_min, base_max = base_delays[app_type]
-        actual_min = max(base_min - random.randint(0, 3), 15)
+        actual_min = max(base_min - random.randint(0, 3), 5)
         actual_max = base_max + random.randint(0, 5)
         minutes = random.randint(actual_min, actual_max)
         seconds = random.randint(0, 59)
@@ -220,7 +233,7 @@ class MultiMusicAutomation(MutexMixin):
         return True
 
     def _youtube_loop(self):
-        """YouTube loop using action queue with numeric logging for each human-like step."""
+        """YouTube loop focused only on IsoClipboard actions."""
         while self.running and self.youtube_controller:
             try:
                 if self.paused:
@@ -237,20 +250,27 @@ class MultiMusicAutomation(MutexMixin):
                     self.action_queue.join()
                     self.next_iso_youtube = time.time() + self.get_isoclipboard_delay("youtube")
                     continue
+
+                # Skip all monitoring logs since we're not taking any actions
+                # Just sleep for a reasonable time before checking IsoClipboard again
+                seconds_until_next_iso = max(0, self.next_iso_youtube - time.time())
+                sleep_time = min(30, seconds_until_next_iso)
+                time.sleep(sleep_time)
+
                 # Check if it's safe to perform a new cluster of actions
-                if self._check_safe_to_act():
-                    actions = self._get_action_cluster(self.youtube_controller, "youtube")
-                    total_steps = len(actions)
-                    for i, (func, action_name) in enumerate(actions):
-                        if i > 0:
-                            intra_cluster_delay = self._get_human_delay(is_cluster=True)
-                            time.sleep(intra_cluster_delay)
-                        logger.info(f"Processing YouTube Music action {i + 1}/{total_steps}: {action_name}")
-                        self._add_action('youtube_music', func, action_name)
-                        self.action_queue.join()
-                # Use the custom delay function to determine the wait time before the next cluster
-                delay = self.get_music_action_delay("youtube")
-                time.sleep(delay)
+                # if self._check_safe_to_act():
+                #     actions = self._get_action_cluster(self.youtube_controller, "youtube")
+                #     total_steps = len(actions)
+                #     for i, (func, action_name) in enumerate(actions):
+                #         if i > 0:
+                #             intra_cluster_delay = self._get_human_delay(is_cluster=True)
+                #             time.sleep(intra_cluster_delay)
+                #         logger.info(f"Processing YouTube Music action {i + 1}/{total_steps}: {action_name}")
+                #         self._add_action('youtube_music', func, action_name)
+                #         self.action_queue.join()
+                # # Use the custom delay function to determine the wait time before the next cluster
+                # delay = self.get_music_action_delay("youtube")
+                # time.sleep(delay)
             except Exception as e:
                 logger.error(f"Error in YouTube loop: {e}")
                 time.sleep(60)
@@ -688,7 +708,7 @@ class MultiMusicAutomation(MutexMixin):
                 time.sleep(60)
 
     def _amazon_loop(self):
-        """Amazon Music loop using action queue with numeric logging for each human-like step."""
+        """Amazon Music loop focused only on IsoClipboard actions."""
         while self.running and self.amazon_controller:
             try:
                 if self.paused:
@@ -707,25 +727,26 @@ class MultiMusicAutomation(MutexMixin):
                     self.next_iso_amazon = time.time() + self.get_isoclipboard_delay("amazon")
                     continue
 
-                # Check if it's safe to perform a new cluster of actions
-                if self._check_safe_to_act():
-                    actions = self._get_action_cluster(self.amazon_controller, "amazon")
-                    total_steps = len(actions)
-                    for i, (func, action_name) in enumerate(actions):
-                        if i > 0:
-                            intra_cluster_delay = self._get_human_delay(is_cluster=True)
-                            time.sleep(intra_cluster_delay)
-                        logger.info(f"Processing Amazon Music action {i + 1}/{total_steps}: {action_name}")
-                        self._add_action('amazon_music', func, action_name)
-                        self.action_queue.join()
+                # Just sleep for a reasonable time before checking IsoClipboard again
+                seconds_until_next_iso = max(0, self.next_iso_amazon - time.time())
+                sleep_time = min(30, seconds_until_next_iso)
+                time.sleep(sleep_time)
 
-                # Use the custom delay function to determine the wait time before the next cluster
-                delay = self.get_music_action_delay("amazon")
-                time.sleep(delay)
+                # Check if it's safe to perform a new cluster of actions
+                # if self._check_safe_to_act():
+                #     actions = self._get_action_cluster(self.amazon_controller, "amazon")
+                #     total_steps = len(actions)
+                #     for i, (func, action_name) in enumerate(actions):
+                #         if i > 0:
+                #             intra_cluster_delay = self._get_human_delay(is_cluster=True)
+                #             time.sleep(intra_cluster_delay)
+                #         logger.info(f"Processing Amazon Music action {i + 1}/{total_steps}: {action_name}")
+                #         self._add_action('amazon_music', func, action_name)
+                #         self.action_queue.join()
 
             except Exception as e:
                 logger.error(f"Error in Amazon loop: {e}")
-                time.sleep
+                time.sleep(60)
 
     def start_tidal_only(self) -> bool:
         """Start Tidal Music automation only with initial setup."""
@@ -774,4 +795,82 @@ class MultiMusicAutomation(MutexMixin):
         self.beatport_thread.start()
 
         logger.info("Started Beatport automation only")
+        return True
+
+    def start_youtube_only(self) -> bool:
+        """Start YouTube Music automation only with initial setup."""
+        if not self.youtube_controller:
+            logger.error("No YouTube Music controller available")
+            return False
+
+        # Run initial setup for YouTube Music
+        if not self._youtube_initial_setup():
+            logger.error("YouTube Music initial setup failed")
+            return False
+
+        self.running = True
+        now = time.time()
+
+        # Start action processing thread
+        self.action_thread = threading.Thread(target=self._process_actions, daemon=True)
+        self.action_thread.start()
+
+        # Set delays and start the YouTube thread
+        self.next_iso_youtube = now + self.get_isoclipboard_delay("youtube")
+        self.last_youtube_action = now
+        self.youtube_thread = threading.Thread(target=self._youtube_loop, daemon=True)
+        self.youtube_thread.start()
+        logger.info("Started YouTube Music automation")
+        return True
+
+    def start_amazon_only(self) -> bool:
+        """Start Amazon Music automation only with initial setup."""
+        if not self.amazon_controller:
+            logger.error("No Amazon Music controller available")
+            return False
+
+        # Run initial setup for Amazon Music
+        if not self._amazon_initial_setup():
+            logger.error("Amazon Music initial setup failed")
+            return False
+
+        self.running = True
+        now = time.time()
+
+        # Start action processing thread
+        self.action_thread = threading.Thread(target=self._process_actions, daemon=True)
+        self.action_thread.start()
+
+        # Set delays and start the Amazon thread
+        self.next_iso_amazon = now + self.get_isoclipboard_delay("amazon")
+        self.last_amazon_action = now
+        self.amazon_thread = threading.Thread(target=self._amazon_loop, daemon=True)
+        self.amazon_thread.start()
+        logger.info("Started Amazon Music automation")
+        return True
+
+    def start_apple_only(self) -> bool:
+        """Start Apple Music automation only with initial setup."""
+        if not self.apple_controller:
+            logger.error("No Apple Music controller available")
+            return False
+
+        # Run initial setup for Apple Music
+        if not self._apple_initial_setup():
+            logger.error("Apple Music initial setup failed")
+            return False
+
+        self.running = True
+        now = time.time()
+
+        # Start action processing thread
+        self.action_thread = threading.Thread(target=self._process_actions, daemon=True)
+        self.action_thread.start()
+
+        # Set delays and start the Apple thread
+        self.next_iso_apple = now + self.get_isoclipboard_delay("apple")
+        self.last_apple_action = now
+        self.apple_thread = threading.Thread(target=self._apple_loop, daemon=True)
+        self.apple_thread.start()
+        logger.info("Started Apple Music automation")
         return True
