@@ -23,9 +23,11 @@ pip install -r requirements.txt
 
 ## Usage
 
+https://sop.rebel.pm/sop/87
+
 Run the main script:
 ```bash
-python -m src.cli.menu
+python -m src.main --device-id XXXXXXXXXXX
 ```
 
 ## Testing
