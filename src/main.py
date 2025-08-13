@@ -6,10 +6,9 @@ import sys
 from pathlib import Path
 import yaml
 from src.cli.menu import CLI
-from src.utils.logging_utils import setup_logger
+from src.utils.logging_utils import setup_logger, set_log_file_name
 
 logger = setup_logger(__name__)
-
 
 def load_config():
     """Load configuration from YAML file."""
@@ -54,6 +53,8 @@ def main():
     if not device_id:
         logger.error("No device ID provided. Please specify with --device-id")
         sys.exit(1)
+
+    set_log_file_name(f"{device_id}.log")
 
     try:
         cli = CLI(device_id)
