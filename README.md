@@ -2,6 +2,11 @@
 
 Automated control system for managing multiple music apps on Android devices using UIAutomator2.
 
+## Useful links
+
+* How to use: https://sop.rebel.pm/sop/87
+* [Phones usage sheet](https://docs.google.com/spreadsheets/d/1x_HFdN1BMOFoRGlGR1vqgsUQi_uBsnHfeadsVG4Ixyk/edit?gid=331104159#gid=331104159) 
+
 ## Installation
 
 1. Clone the repository:
@@ -22,8 +27,6 @@ pip install -r requirements.txt
 ```
 
 ## Usage
-
-https://sop.rebel.pm/sop/87
 
 Run the main script:
 ```bash
