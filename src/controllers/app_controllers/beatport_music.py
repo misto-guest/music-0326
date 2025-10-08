@@ -19,7 +19,6 @@ class BeatportMusicConfig:
     MAIN_ACTIVITY = ".features.splash.SplashActivity"
     STARTUP_DELAY = 10  # Delay after starting app
 
-
 logger = setup_logger(__name__)
 
 
@@ -343,7 +342,7 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
         logger.info("Beatport doesn't use IsoClipboard - using initial setup instead")
         return self.handle_initial_setup()
 
-    def handle_initial_setup(self) -> bool:
+    def handle_initial_setup(self, user_id: int) -> bool:
         """Full UI setup for Beatport with proper playtime init."""
         try:
             if self.check_daily_limit_reached():
@@ -361,7 +360,7 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
                 logger.error("Failed to disable rotation")
                 return False
 
-            if not self.restart_app():
+            if not self.restart_app(user_id):
                 logger.error("Failed to restart Beatport")
                 return False
 
@@ -378,7 +377,7 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
             # Start fresh tracking
             self._start_playtime_tracking()
 
-            if not self.manage_window_state(minimize=True):
+            if not self.manage_window_state(user_id, minimize=True):
                 logger.warning("Failed to minimize Beatport window")
             else:
                 logger.info("Beatport window minimized successfully.")
@@ -464,7 +463,7 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
 
         return True
 
-    def prepare_for_action(self) -> bool:
+    def prepare_for_action(self, user_id: int) -> bool:
         """Ensure we can safely interact with app while preserving time."""
         try:
             if self.check_daily_limit_reached():
@@ -479,17 +478,17 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
             if self.is_playing:
                 self._update_playtime()
 
-            if self._verify_app_running():
+            if self._verify_app_running(user_id):
                 return True
 
             # App needs restart - remember state
             was_playing = self.is_playing
 
-            if not self.start_app():
+            if not self.start_app(user_id):
                 return False
 
             time.sleep(1)
-            running = self._verify_app_running()
+            running = self._verify_app_running(user_id)
 
             # Restore playing state after restart
             if running and was_playing:
@@ -502,7 +501,7 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error preparing for action: {e}")
             return False
 
-    def play_pause(self, check_limit=True) -> bool:
+    def play_pause(self, user_id: int, check_limit=True) -> bool:
         """Toggle play/pause with daily limit checks."""
         if self.is_playing:
             self._stop_playtime_tracking()
@@ -516,7 +515,7 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
             logger.info("Attempting Beatport play/pause...")
             prepared = False
             while time.time() - start_time < 15:
-                if self.prepare_for_action():
+                if self.prepare_for_action(user_id):
                     prepared = True
                     break
                 time.sleep(2)
@@ -563,7 +562,7 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
             except Exception:
                 return False
 
-    def next_track(self) -> bool:
+    def next_track(self, user_id: int) -> bool:
         """Skip to next track with playtime preservation."""
         # Check limit first before any other operations
         if self.check_daily_limit_reached(force_check=True):  # Force check to get latest
@@ -579,7 +578,7 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
             logger.info("Attempting next track...")
             prepared = False
             while time.time() - start_time < 15:
-                if self.prepare_for_action():  # This updates playtime
+                if self.prepare_for_action(user_id):  # This updates playtime
                     prepared = True
                     break
                 time.sleep(2)
@@ -602,9 +601,9 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
                 time.sleep(1)
                 return True
 
+
             logger.info("Next button not found, using keyevent fallback")
             self.device.shell('input keyevent KEYCODE_MEDIA_NEXT')
-            time.sleep(1)
             return True
 
         except Exception as e:
@@ -616,18 +615,18 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
             except Exception:
                 return False
 
-    def previous_track(self) -> bool:
+    def previous_track(self, user_id: int) -> bool:
         """Go to previous track."""
         if self.is_playing and self.check_daily_limit_reached():
             logger.warning("Daily limit reached - stopping playback instead of previous track")
-            return self.play_pause()
+            return self.play_pause(user_id)
 
         start_time = time.time()
         try:
             logger.info("Attempting previous track...")
             prepared = False
             while time.time() - start_time < 15:
-                if self.prepare_for_action():
+                if self.prepare_for_action(user_id):
                     prepared = True
                     break
                 time.sleep(2)
@@ -663,21 +662,14 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
         logger.info("Beatport: like action not supported; skipping.")
         return True
 
-    def _verify_app_running(self) -> bool:
+    def _verify_app_running(self, user_id: int) -> bool:
         """Check if Beatport is in foreground or has visible UI."""
         try:
-            if self.device(packageName=self.package_name).exists:
-                logger.info("Found Beatport UI elements")
-                return True
-
-            current_app = self.device.app_current()
-            if current_app.get('package') == self.package_name:
-                logger.info("Beatport is current app")
-                return True
-
-            # Another fallback: dumpsys check
-            if self.package_name in self.device.shell('dumpsys activity activities | grep -i "mResumedActivity"'):
-                logger.info("Beatport found in resumed activities")
+            result = self.device.shell("dumpsys activity recents | grep " + self.package_name)
+            command_output = result.output
+            
+            if f"u{user_id}" in command_output:
+                logger.info("Beatport is current app for current user")
                 return True
 
             return False
@@ -685,17 +677,18 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error verifying app state: {e}")
             return False
 
-    def stop_app(self) -> bool:
+    def stop_app(self, user_id: int) -> bool:
         """Stop Beatport and save final playtime."""
         try:
             if self.is_playing:
                 self._update_playtime()
                 self.is_playing = False
 
-            self.device.app_stop(self.package_name)
+            # self.device.app_stop(self.package_name)
+            self.device.shell(f"am force-stop --user {user_id} {self.package_name}")
             time.sleep(1)
 
-            if self.is_running():
+            if self.is_running(user_id):
                 logger.warning("App still running, forcing stop")
                 return self.force_stop()
 
@@ -709,7 +702,7 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error stopping Beatport: {e}")
             return False
 
-    def start_app(self) -> bool:
+    def start_app(self, user_id: int) -> bool:
         """Launch Beatport if under daily limit."""
         if self.check_daily_limit_reached():
             logger.warning("Cannot start Beatport - daily limit reached")
@@ -721,17 +714,17 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
                 return False
 
             self.device.shell(
-                f'am start -W -n {self.package_name}/{BeatportMusicConfig.MAIN_ACTIVITY} --activity-single-top'
+                f'am start --user {user_id} -W -n {self.package_name}/{BeatportMusicConfig.MAIN_ACTIVITY} --activity-single-top'
             )
             time.sleep(3)
 
-            if self._verify_app_running():
+            if self._verify_app_running(user_id):
                 logger.info("Beatport started via am start")
                 return True
 
             logger.info("Retrying Beatport start...")
             time.sleep(1)
-            if self._verify_app_running():
+            if self._verify_app_running(user_id):
                 logger.info("Beatport started after retry")
                 return True
 
@@ -741,10 +734,10 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error starting Beatport: {e}")
             return False
 
-    def is_running(self) -> bool:
+    def is_running(self, user_id: int) -> bool:
         """Check if Beatport is running."""
         try:
-            return self._verify_app_running()
+            return self._verify_app_running(user_id)
         except Exception as e:
             logger.error(f"Error checking if Beatport is running: {e}")
             return False
@@ -752,14 +745,16 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
     def force_stop(self) -> bool:
         """Force-stop Beatport."""
         try:
-            self.device.app_stop(self.package_name)
+            # self.device.app_stop(self.package_name)
+            command = f"am force-stop --user {user_id} {self.package_name}"
+            self.device.shell(command)
             time.sleep(1)
             return True
         except Exception as e:
             logger.error(f"Error force stopping Beatport: {e}")
             return False
 
-    def manage_window_state(self, minimize: bool = True) -> bool:
+    def manage_window_state(self, user_id: int, minimize: bool = True) -> bool:
         """Minimize/maximize without affecting playback state."""
         try:
             if minimize:
@@ -769,26 +764,28 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
                 return True
             else:
                 logger.info("Maximizing Beatport window")
-                if self.is_running():
+                if self.is_running(user_id):
                     command = f"monkey -p {self.package_name} -c android.intent.category.LAUNCHER 1"
                     self.device.shell(command)
                     time.sleep(3)
                     return True
                 else:
-                    return self.start_app()
+                    return self.start_app(user_id)
         except Exception as e:
             logger.error(f"Failed to manage window state: {e}")
             return False
 
-    def restart_app(self) -> bool:
+    def restart_app(self, user_id: int) -> bool:
         """Force-stop and relaunch Beatport."""
         try:
-            self.device.app_stop(self.package_name)
+            # self.device.app_stop(self.package_name)
+            command = f"am force-stop --user {user_id} {self.package_name}"
+            self.device.shell(command)
             time.sleep(2)
-            cmd = f"am start -W -n {BeatportMusicConfig.PACKAGE_NAME}/{BeatportMusicConfig.MAIN_ACTIVITY} --activity-single-top"
+            cmd = f"am start --user {user_id} -W -n {BeatportMusicConfig.PACKAGE_NAME}/{BeatportMusicConfig.MAIN_ACTIVITY} --activity-single-top"
             self.device.shell(cmd)
             time.sleep(3)
-            if self._verify_app_running():
+            if self._verify_app_running(user_id):
                 logger.info("Beatport restarted successfully.")
                 return True
             else:

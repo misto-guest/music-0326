@@ -51,15 +51,14 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
         except Exception as e:
             logger.error(f"Error in cleanup: {e}")
 
-    def check_play_state(self) -> bool:
+    def check_play_state(self, user_id: int) -> bool:
         """
         Check if Apple Music is currently playing by parsing `dumpsys media_session`.
         Returns True if state=PLAYING(3), else False.
         """
         try:
             time.sleep(2)
-
-            cmd = "dumpsys media_session"
+            cmd = f"dumpsys media_session | grep -A 20 'userId={user_id}'"
             result = self.device.shell(cmd)
             raw_output = getattr(result, 'output', result)
 
@@ -68,6 +67,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 return False
 
             lines = raw_output.split("\n")
+            
 
             apple_music_session = []
             capturing = False
@@ -79,7 +79,6 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                     apple_music_session.append(line)
                     if line.strip() == "":
                         break
-
             if not apple_music_session:
                 logger.info("No active Apple Music session found in media_session.")
                 return False
@@ -102,51 +101,30 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error checking Apple Music play state: {e}")
             return False
 
-    def ensure_playing(self) -> bool:
+    def ensure_playing(self, user_id: int) -> bool:
         """
         Ensure Apple Music is playing by checking playback state
         and sending a media keyevent if needed.
         """
         try:
-            if not self.prepare_for_action():
+            if not self.prepare_for_action(user_id):
                 logger.error("Could not prepare for play state check.")
                 return False
-
-            if not self.check_play_state():
-                logger.info("Music is NOT playing, sending play command...")
-                self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
-
-                time.sleep(5)
-
-                if not self.check_play_state():
-                    logger.error("Failed to start playback (still not playing).")
-                    return False
-
-                logger.info("Successfully started playback.")
-            else:
-                logger.info("Music is already playing.")
-
+            
+            self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
+            logger.info("Play/pause command sent to app...")
             return True
 
         except Exception as e:
             logger.error(f"Error ensuring playing state: {e}")
             return False
 
-    def prepare_app_and_play(self) -> bool:
+    def prepare_app_and_play(self, user_id: int) -> bool:
         """Consolidated method to prepare app and ensure it's playing."""
         try:
-            if not self.prepare_for_action():
+            if not self.prepare_for_action(user_id):
                 logger.error("Could not prepare app for action")
                 return False
-
-            # Now check play state and handle if needed
-            if not self.check_play_state():
-                logger.info("Music is not playing, sending play command")
-                self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
-                time.sleep(7)  # Wait for play state to update
-
-                # Final check
-                return self.check_play_state()
 
             return True
         except Exception as e:
@@ -195,9 +173,12 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
 
     def ensure_screen_active(self) -> bool:
         try:
-            device_info = self.device.info
-            screen_state = device_info.get('screenState') if device_info else None
-            logger.info(f"Current screen state: {screen_state}")
+            result = self.device.shell("dumpsys power | grep 'mWakefulness'")
+            command_output = result.output
+            awake_log = "mWakefulness=Awake"
+            if awake_log in command_output:
+                logger.info("Current screen state: Awake")
+                return True
 
             return self.unlock_screen()
         except Exception as e:
@@ -230,14 +211,16 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 time.sleep(delay)
         return False
 
-    def prepare_for_action(self) -> bool:
+    
+
+    def prepare_for_action(self, user_id: int) -> bool:
         try:
             # Check if app needs restart due to popup handling
-            if self.needs_restart("Apple Music"):
+            if self.needs_restart("Apple Music {user_id}"):
                 logger.info("Apple Music needs restart after system popup handling")
                 self.clear_restart_flag("Apple Music")
                 # Start app again
-                return self.start_app()
+                return self.start_app(user_id)
 
             if not self.ensure_screen_active():
                 logger.error("Failed to ensure screen is active before action.")
@@ -253,69 +236,50 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 self.device.app_stop(self.isoclipboard_package)
                 time.sleep(2)
 
-            def is_apple_music_active(text: str) -> bool:
-                return ("com.apple.android.music" in text) or (".amcKGERRbgaxjBBPED" in text)
+            def current_app_for_current_user(user_id: int) -> bool:
+                result = self.device.shell("dumpsys activity recents | grep " + self.package_name)
+                command_output = result.output
+                
+                if f"u{user_id}" in command_output:
+                    logger.info("Apple music is current app for current user")
+                    return True 
+                return False
 
-            if not is_apple_music_active(current_package):
-                logger.info("Apple Music not detected in foreground via app_current(). Checking recents...")
-                recents_response = self.device.shell(
-                    "dumpsys activity recents | grep 'Recent #' | grep -i '.amcKGERRbgaxjBBPED'")
-                recents_output = recents_response.output if hasattr(recents_response, "output") else recents_response
-                logger.info(f"Recents output: {recents_output.strip()}")
+            if not current_app_for_current_user(user_id):
 
-                # Press HOME first to ensure clean state
-                logger.info("Pressing HOME key to ensure clean state")
-                self.device.press('home')
-                time.sleep(1)
-
-                if not is_apple_music_active(recents_output):
-                    logger.info("Apple Music not running according to recents. Starting it normally.")
+                # if not is_apple_music_active(recents_output):
+                logger.info("Apple Music not running according to recents. Starting it normally.")
                     # Try am start first
-                    try:
-                        start_command = f'am start -n {self.package_name}/com.apple.android.music.activities.MainActivity'
-                        logger.info(f"Executing am start command: {start_command}")
-                        self.device.shell(start_command)
-                        time.sleep(3)
-                    except Exception as e:
-                        logger.error(f"am start failed: {e}")
-                        return self.start_app()
-                else:
-                    logger.info("Apple Music found in recents. Trying multiple launch methods.")
-                    # Try monkey command first
-                    command = "monkey -p com.apple.android.music -c android.intent.category.LAUNCHER 1"
-                    logger.info(f"Executing monkey command: {command}")
-                    result = self.device.shell(command)
-                    logger.info(f"Monkey command result: {result}")
+                try:
+                    start_command = f'am start --user {user_id} -W -n {self.package_name}/.onboarding.activities.SplashActivity --activity-single-top'
+                    logger.info(f"Starting activity")
+                    self.device.shell(start_command)
                     time.sleep(3)
+                except Exception as e:
+                    logger.error(f"am start failed: {e}")
+                    return self.start_app(user_id)
 
-                    # Check if monkey command worked
-                    current_app_info = self.device.app_current()
-                    current_package = current_app_info.get("package", "")
-
-                    if not is_apple_music_active(current_package):
-                        logger.info("Monkey command failed, trying am start...")
-                        try:
-                            start_command = f'am start -n {self.package_name}/com.apple.android.music.activities.MainActivity'
-                            logger.info(f"Executing am start command: {start_command}")
-                            self.device.shell(start_command)
-                            time.sleep(3)
-                        except Exception as e:
-                            logger.error(f"am start failed: {e}")
-                            return self.start_app()
-
-                # Final check
-                current_app_info = self.device.app_current()
-                current_package = current_app_info.get("package", "")
-                logger.info(f"Final check - current active package: {current_package}")
-
-                if not is_apple_music_active(current_package):
+                if not current_app_for_current_user(user_id):
                     logger.error("All attempts to bring Apple Music to foreground failed.")
                     # One last attempt using app_start
-                    return self.start_app()
+                    return self.start_app(user_id)
                 else:
                     logger.info("Apple Music has been successfully brought to the foreground.")
             else:
-                logger.info("Apple Music is already in the foreground.")
+                logger.info("Apple music is running, checking if its in foreground or not")
+                result = self.device.shell("dumpsys window | grep mCurrentFocus")
+                command_output = result.output
+                apple_music_activity_name = "com.apple.android.music/com.apple.android.music.common.MainContentActivity"
+                
+                if f"u{user_id}" in command_output and apple_music_activity_name in command_output:
+                    logger.info("Apple music is in foreground for current user")
+                else:
+                    logger.info("Apple music is NOT in foreground for current user")
+                    start_command = f'am start --user {user_id} -W -n {self.package_name}/.onboarding.activities.SplashActivity --activity-single-top'
+                    logger.info(f"Restarting activity, for user {user_id}")
+                    self.device.shell(start_command)
+                    time.sleep(4)
+
 
             # Wait for UI to settle
             time.sleep(2)
@@ -345,7 +309,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Failed to manage window state: {e}")
             return False
 
-    def start_app(self) -> bool:
+    def start_app(self, user_id) -> bool:
         try:
             logger.info("Starting Apple Music via app_start()")
             self.device.app_start(self.package_name)
@@ -361,7 +325,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error starting Apple Music: {e}")
             return False
 
-    def stop_app(self) -> bool:
+    def stop_app(self, user_id: int) -> bool:
         """Stop Apple Music app."""
         try:
             self.device.app_stop(self.package_name)
@@ -391,7 +355,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error checking if Apple Music is running: {e}")
             return False
 
-    def force_stop(self) -> bool:
+    def force_stop(self, user_id: int) -> bool:
         """Force stop Apple Music."""
         try:
             self.device.app_stop(self.package_name)
@@ -401,7 +365,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error force stopping Apple Music: {e}")
             return False
 
-    def play_pause(self) -> bool:
+    def play_pause(self, user_id: int) -> bool:
         """Toggle play/pause with a max 15-second wait for app readiness."""
         start_time = time.time()
         try:
@@ -410,7 +374,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             # 1. Wait for up to 15 seconds for Apple Music to be ready (foreground + playing).
             prepared = False
             while time.time() - start_time < 15:
-                if self.prepare_app_and_play():
+                if self.prepare_app_and_play(user_id):
                     prepared = True
                     break
                 time.sleep(2)
@@ -439,7 +403,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             except:
                 return False
 
-    def next_track(self) -> bool:
+    def next_track(self, user_id: int) -> bool:
         """Skip to next track with a max 15-second wait for app readiness."""
         start_time = time.time()
         try:
@@ -448,7 +412,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             # 1. Wait for up to 15 seconds for Apple Music to be ready.
             prepared = False
             while time.time() - start_time < 15:
-                if self.prepare_app_and_play():
+                if self.prepare_app_and_play(user_id):
                     prepared = True
                     break
                 time.sleep(2)
@@ -486,7 +450,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             except:
                 return False
 
-    def previous_track(self) -> bool:
+    def previous_track(self, user_id: int) -> bool:
         """Go to previous track with a max 15-second wait for Apple Music readiness."""
         start_time = time.time()
         try:
@@ -495,7 +459,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             # Wait up to 15s for Apple Music to be ready.
             prepared = False
             while time.time() - start_time < 15:
-                if self.prepare_app_and_play():
+                if self.prepare_app_and_play(user_id):
                     prepared = True
                     break
                 time.sleep(2)
@@ -533,7 +497,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 self._ensure_mini_player()
                 return False
 
-    def like_current_song(self) -> bool:
+    def like_current_song(self, user_id: int) -> bool:
         """Like current song with a max 15-second wait for app readiness."""
         start_time = time.time()
         try:
@@ -542,7 +506,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             # 1. Wait up to 15s for Apple Music readiness.
             prepared = False
             while time.time() - start_time < 15:
-                if self.prepare_app_and_play():
+                if self.prepare_app_and_play(user_id):
                     prepared = True
                     break
                 time.sleep(2)
@@ -622,7 +586,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
         except Exception as e:
             logger.error(f"Error restoring rotation state: {e}")
 
-    def handle_isoclipboard(self) -> bool:
+    def handle_isoclipboard(self, user_id: int) -> bool:
         initial_rotation_state = None
         try:
             initial_rotation_state = self.get_rotation_settings()
@@ -649,11 +613,11 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 return False
 
             # Check if Apple Music was closed
-            if self.needs_restart("Apple Music"):
+            if self.needs_restart("Apple Music {user_id}"):
                 logger.info("Restarting Apple Music after force-close")
                 self.clear_restart_flag("Apple Music")
                 time.sleep(2)
-                if not self.prepare_for_action():
+                if not self.prepare_for_action(user_id):
                     return False
 
             # Shuffle + miniplayer
@@ -669,7 +633,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             if initial_rotation_state:
                 self._restore_rotation_state(initial_rotation_state)
 
-    def _start_isoclipboard_safely(self) -> bool:
+    def _start_isoclipboard_safely(self, user_id: int) -> bool:
         max_attempts = 3
         for attempt in range(max_attempts):
             logger.info(f"Apple Music: Starting IsoClipboard attempt {attempt + 1}/{max_attempts}")
@@ -686,7 +650,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
 
             self.device.app_stop(self.isoclipboard_package)
             time.sleep(1)
-            self.device.shell(f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top')
+            self.device.shell(f'am start --user {user_id} -W -n {self.isoclipboard_package}/.onboarding.activities.SplashActivity --activity-single-top')
             time.sleep(3)
 
             if not self._verify_rotation_disabled():
@@ -713,7 +677,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 time.sleep(1)
                 self.device.press("home")
                 time.sleep(1)
-                self.device.shell(f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top')
+                self.device.shell(f'am start --user {user_id} -W -n {self.isoclipboard_package}/.onboarding.activities.SplashActivity --activity-single-top')
                 time.sleep(2)
 
             logger.error(f"Apple Music: Failed to bring IsoClipboard to foreground on attempt {attempt + 1}")
