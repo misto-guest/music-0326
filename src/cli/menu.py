@@ -578,16 +578,30 @@ class CLI:
                 print(f"{key} - {description}")
 
     def run(self, initial_command: str = None):
-        """Run the main CLI loop."""
+        """Run the main CLI loop.
+        
+        Args:
+            initial_command: If provided, this command will be executed and the program will exit.
+                            If None, runs in interactive mode.
+        """
         logger.info(f"Running CLI for device: {self.device_id}")
+        
+        if initial_command:
+            # Non-interactive mode - run the command and exit
+            logger.info(f"Executing single command: {initial_command}")
+            try:
+                self.handle_command(initial_command)
+            except Exception as e:
+                logger.error(f"Fatal error: {e}")
+            finally:
+                self.stop_automation()
+            return
+
+        # Interactive mode - show menu and process commands
         while True:
             try:
-                if not initial_command:
-                    self.display_menu(show_help='--help' in sys.argv)
-                    command = input("\nEnter command: ").lower().strip()
-                else:
-                    command = initial_command
-                    initial_command = None
+                self.display_menu(show_help='--help' in sys.argv)
+                command = input("\nEnter command: ").lower().strip()
                 
                 if command in ['--help', '-h']:
                     self.display_menu(show_help=True)
