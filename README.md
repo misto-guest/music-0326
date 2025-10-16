@@ -33,6 +33,17 @@ Run the main script:
 python -m src.main --device-id XXXXXXXXXXX
 ```
 
+Run the main script with command:
+```bash
+python -m src.main --device-id XXXXXXXXXXX --command "sall --exclude amazon youtube"
+```
+
+To run all devices use launch.sh script in bash:
+```bash
+./launch.sh
+```
+
+
 ## Testing
 
 Run tests using pytest:
