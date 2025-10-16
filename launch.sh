@@ -1,60 +1,149 @@
 #!/bin/bash
-PROJECT_FOLDER=$(pwd)
-LOGS_FOLDER=$PROJECT_FOLDER/logs
+set -e
 
-DEVICES=(
-    "R3CR707G1FF"
-    "R5CR11KHW4W"
-    "RFCT512BG1D"
-    "R5CR128DBWB"
-    "R5CR80RMVXD"
-    "R5CR70V8SFR"
-    "R5CR92M73NN"
-    "R3CR202S10A"
-    "R5CR71C2VNK"
-    "R5CR60LS9JX"
-    "R3CR100RZMH"
-    "R5CR70V87SL"
-    "R5CRC2JA5NK"
-    "R5CNC0RZSNW"
-    "R5CR70SM7WR"
-    "R5CRC38FN7N"
-    "R5CRB2FP6PL"
-    "R5CR70MQ79H"
-    "R5CT50CDEQF"
-    "R5CR32LFMMN"
-    "R5CW51LEZVP"
-    "R3CT30KY99D"
-    "R5CT43BZMRR"
-    "R5CT236E85J"
-    "R5CT92RTMYT"
-    "R5CTA12FWXW"
-    "R5CT92M9KZN"
-    "R5CT50NE2ZL"
-    "R5CT814PWZP"
-    "RFCT90N0EGZ"
-    "R5CT21MP78W"
-    "R5CT10Y99HK"
-    "R5CT311ZYXA"
-    "R5CW22ML4ZE"
-    "RFCTA0YDH6H"
-    "R5CT61PDQDV"
-    "R5CT50BAKEB"
-)
-
-function launch_one_device() {
-    DEVICE_ID=$1
-    mkdir -p $LOGS_FOLDER/$DEVICE_ID
-    python -m src.main --device-id $DEVICE_ID --command="sall --exclude amazon youtube" >> $LOGS_FOLDER/$DEVICE_ID/$(date +"%Y-%m-%d").log 2>&1 &
-}
-
-
-if test -f "$PROJECT_FOLDER/.venv/Scripts/activate"; then
-    source $PROJECT_FOLDER/.venv/Scripts/activate
-else
-    source $PROJECT_FOLDER/venv/Scripts/activate
+# Initialize variables
+PROJECT_FOLDER=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -W 2>/dev/null || pwd)
+# Convert to Windows path if running in Git Bash
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
+    PROJECT_FOLDER=$(cygpath -w "$PROJECT_FOLDER" 2>/dev/null || echo "$PROJECT_FOLDER")
 fi
 
-for DEVICE_ID in "${DEVICES[@]}"; do
-    launch_one_device "$DEVICE_ID"
-done
+PROJECT_FOLDER=${PROJECT_FOLDER//\\//}
+LOGS_FOLDER="${PROJECT_FOLDER}/logs"
+PM2_CONFIG_FILE="${PROJECT_FOLDER}/ecosystem.config.js"
+DEVICES_FILE="${PROJECT_FOLDER}/devices.list"
+
+echo "PROJECT_FOLDER: $PROJECT_FOLDER"
+echo "LOGS_FOLDER: $LOGS_FOLDER"
+echo "PM2_CONFIG_FILE: $PM2_CONFIG_FILE"
+echo "DEVICES_FILE: $DEVICES_FILE"
+echo ""
+
+# Load device IDs from external file
+load_devices() {
+    if [[ ! -f "$DEVICES_FILE" ]]; then
+        echo "Error: Devices file not found at $DEVICES_FILE"
+        echo "Please create a file named 'devices.list' in the project root with one device ID per line."
+        exit 1
+    fi
+    
+    # Read non-empty, non-comment lines into DEVICES array
+    mapfile -t DEVICES < <(grep -v '^\s*#' "$DEVICES_FILE" | grep -v '^\s*$' | tr -d '\r')
+    
+    if [[ ${#DEVICES[@]} -eq 0 ]]; then
+        echo "Error: No valid device IDs found in $DEVICES_FILE"
+        echo "Please add device IDs (one per line) to the file."
+        exit 1
+    fi
+    
+    echo "Loaded ${#DEVICES[@]} device(s) from $DEVICES_FILE"
+}
+
+# Generate PM2 ecosystem configuration
+generate_pm2_config() {
+    echo "Generating PM2 configuration for ${#DEVICES[@]} devices..."
+
+    local config_content='module.exports = {
+  apps: ['
+
+    for DEVICE_ID in "${DEVICES[@]}"; do
+        config_content+="
+    {
+      name: 'phone-${DEVICE_ID}',
+      script: './run_device.sh',
+      args: '--device-id ${DEVICE_ID} --command \"sall --exclude amazon youtube\"',
+      max_memory_restart: '1G',
+      autorestart: false,
+      max_restarts: 10,
+      restart_delay: 2000,
+      output: '${LOGS_FOLDER//\/\\}/${DEVICE_ID}.log',
+      error: '${LOGS_FOLDER//\/\\}/${DEVICE_ID}.log',
+      watch: false,
+      env: {
+        DEVICE_ID: '${DEVICE_ID}',
+        PYTHONUNBUFFERED: '1',
+        PYTHONIOENCODING: 'utf-8'
+      }
+      
+    },"
+    done
+
+    # Remove trailing comma and close the array
+    config_content="${config_content%,}
+  ]
+};"
+
+    echo "$config_content" > "$PM2_CONFIG_FILE"
+    echo "Generated PM2 configuration at $PM2_CONFIG_FILE with ${#DEVICES[@]} devices"
+}
+
+# Start all instances
+start_instances() {
+    # Install PM2 if not installed
+    if ! command -v pm2 &> /dev/null; then
+        echo "PM2 not found. Installing PM2..."
+        npm install -g pm2
+        pm2 install pm2-logrotate
+    fi
+
+    pm2 set pm2-logrotate:rotateInterval '0 0 * * *' > /dev/null  # rotate daily
+    pm2 set pm2-logrotate:retain 30 > /dev/null                     # keep 7 old logs
+    pm2 set pm2-logrotate:compress true > /dev/null                # compress old logs
+    pm2 set pm2-logrotate:max_size 200M > /dev/null                # or rotate when >50M
+    pm2 set pm2-logrotate:dateFormat 'YYYY-MM-DD' > /dev/null
+
+    # Generate or update config
+    generate_pm2_config
+
+    # Start all processes using the config file
+    cd "$PROJECT_FOLDER"
+    pm2 start "$PM2_CONFIG_FILE"
+
+    # Save PM2 process list
+    pm2 save
+    echo "Run 'pm2 startup' to enable auto-start on boot"
+}
+
+# Stop all instances
+stop_instances() {
+    pm2 delete all
+    pm2 save
+}
+
+# Show status
+show_status() {
+    pm2 status
+}
+
+# Main script execution
+load_devices
+
+case "$1" in
+    start)
+        start_instances
+        ;;
+    stop)
+        stop_instances
+        ;;
+    restart)
+        stop_instances
+        start_instances
+        ;;
+    status)
+        show_status
+        ;;
+    generate-config)
+        generate_pm2_config
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status|generate-config}"
+        echo "  start          - Start all instances"
+        echo "  stop           - Stop all instances"
+        echo "  restart        - Restart all instances"
+        echo "  status         - Show status"
+        echo "  generate-config - Regenerate PM2 config file"
+        exit 1
+        ;;
+esac
+
+exit 0

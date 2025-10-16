@@ -1,0 +1,1 @@
+* Need command line tool to control all phones from one place. Currently need run cli for each phone separately

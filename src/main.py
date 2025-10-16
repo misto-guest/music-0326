@@ -55,7 +55,8 @@ def main():
         logger.error("No device ID provided. Please specify with --device-id")
         sys.exit(1)
 
-    set_log_file_name(f"{device_id}.log")
+    # use pm2 logs
+    # set_log_file_name(f"{device_id}.log")
 
     try:
         cli = CLI(device_id)

@@ -38,7 +38,8 @@ Run the main script with command:
 python -m src.main --device-id XXXXXXXXXXX --command "sall --exclude amazon youtube"
 ```
 
-To run all devices use launch.sh script in bash:
+To run and manage all devices use launch.sh script in bash. It runs pm2 with ecosystem.config.js:
+But first need to define devices list in devices.list file.
 ```bash
 ./launch.sh
 ```

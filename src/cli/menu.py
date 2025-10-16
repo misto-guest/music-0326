@@ -622,6 +622,7 @@ class CLI:
                 logger.error(f"Error in CLI loop: {e}")
                 continue
 
+    # fixme: it always returns True. wtf?
     def handle_command(self, command: str) -> bool:
         parts = command.split()
         if not parts:
