@@ -42,10 +42,6 @@ DEVICES=(
     "R5CT50BAK"
 )
 
-DEVICES=(
-    "R3CR707G1FF"
-)
-
 function launch_one_device() {
     DEVICE_ID=$1
     mkdir -p $LOGS_FOLDER/$DEVICE_ID
