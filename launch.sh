@@ -1,5 +1,5 @@
 #!/bin/bash
-PROJECT_FOLDER="C:\Users\windows2025\PycharmProjects\android_music_automation"
+PROJECT_FOLDER=$(pwd)
 LOGS_FOLDER=$PROJECT_FOLDER/logs
 
 DEVICES=(
@@ -48,7 +48,13 @@ function launch_one_device() {
     python -m src.main --device-id $DEVICE_ID --command="sall --exclude amazon youtube" >> $LOGS_FOLDER/$DEVICE_ID/$(date +"%Y-%m-%d").log 2>&1 &
 }
 
-source $PROJECT_FOLDER/.venv/Scripts/activate
+
+if test -f "$PROJECT_FOLDER/.venv/Scripts/activate"; then
+    source $PROJECT_FOLDER/.venv/Scripts/activate
+else
+    source $PROJECT_FOLDER/venv/Scripts/activate
+fi
+
 for DEVICE_ID in "${DEVICES[@]}"; do
     launch_one_device "$DEVICE_ID"
 done

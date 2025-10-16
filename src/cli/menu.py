@@ -589,12 +589,13 @@ class CLI:
         if initial_command:
             # Non-interactive mode - run the command and exit
             logger.info(f"Executing single command: {initial_command}")
-            try:
-                self.handle_command(initial_command)
-            except Exception as e:
-                logger.error(f"Fatal error: {e}")
-            finally:
-                self.stop_automation()
+            if not self.handle_command(initial_command):
+                logger.info("Exiting...")
+                return
+
+            while True:
+                time.sleep(60);
+            
             return
 
         # Interactive mode - show menu and process commands
