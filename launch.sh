@@ -28,30 +28,36 @@ load_devices() {
     fi
     
     # Read non-empty, non-comment lines into DEVICES array
-    mapfile -t DEVICES < <(grep -v '^\s*#' "$DEVICES_FILE" | grep -v '^\s*$' | tr -d '\r')
+    mapfile -t DEVICE_LINES < <(grep -v '^\s*#' "$DEVICES_FILE" | grep -v '^\s*$' | tr -d '\r')
     
-    if [[ ${#DEVICES[@]} -eq 0 ]]; then
+    if [[ ${#DEVICE_LINES[@]} -eq 0 ]]; then
         echo "Error: No valid device IDs found in $DEVICES_FILE"
         echo "Please add device IDs (one per line) to the file."
         exit 1
     fi
     
-    echo "Loaded ${#DEVICES[@]} device(s) from $DEVICES_FILE"
+    echo "Loaded ${#DEVICE_LINES[@]} device(s) from $DEVICES_FILE"
 }
 
 # Generate PM2 ecosystem configuration
 generate_pm2_config() {
-    echo "Generating PM2 configuration for ${#DEVICES[@]} devices..."
+    echo "Generating PM2 configuration for ${#DEVICE_LINES[@]} devices..."
 
     local config_content='module.exports = {
   apps: ['
 
-    for DEVICE_ID in "${DEVICES[@]}"; do
+    for DEVICE_LINE in "${DEVICE_LINES[@]}"; do
+        IFS=',' read -r ID DEVICE_ID COMMAND <<< "$DEVICE_LINE"
+
+        # Remove quotes around COMMAND if present
+        COMMAND=${COMMAND//\"/}
+        CMD_TXT=${COMMAND// /_}
+
         config_content+="
     {
-      name: 'phone-${DEVICE_ID}',
+      name: '#${ID}-${DEVICE_ID}-${CMD_TXT}',
       script: './run_device.sh',
-      args: '--device-id ${DEVICE_ID} --command \"sall --exclude amazon youtube\"',
+      args: '',
       max_memory_restart: '1G',
       autorestart: false,
       max_restarts: 10,
@@ -61,6 +67,7 @@ generate_pm2_config() {
       watch: false,
       env: {
         DEVICE_ID: '${DEVICE_ID}',
+        COMMAND: '${COMMAND}',
         PYTHONUNBUFFERED: '1',
         PYTHONIOENCODING: 'utf-8'
       }
@@ -74,7 +81,7 @@ generate_pm2_config() {
 };"
 
     echo "$config_content" > "$PM2_CONFIG_FILE"
-    echo "Generated PM2 configuration at $PM2_CONFIG_FILE with ${#DEVICES[@]} devices"
+    echo "Generated PM2 configuration at $PM2_CONFIG_FILE with ${#DEVICE_LINES[@]} devices"
 }
 
 # Start all instances

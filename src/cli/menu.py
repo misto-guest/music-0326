@@ -116,6 +116,7 @@ class CLI:
         matches = get_close_matches(input_param, known_params, n=1, cutoff=0.6)
         return matches[0] if matches else "help for available commands"
 
+    # fixme: never used?
     def process_command(self, command_line):
         # Split into command and parameters
         parts = command_line.split()

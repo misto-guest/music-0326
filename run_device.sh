@@ -8,4 +8,10 @@ else
     source $PROJECT_FOLDER/venv/Scripts/activate
 fi
 
-python -m src.main --device-id "$DEVICE_ID" --command="sall --exclude amazon youtube"
+if [ "$COMMAND" != "" ]; then
+    python -m src.main --device-id "$DEVICE_ID" --command="$COMMAND"
+else
+    echo "No command provided. Stopping device $DEVICE_ID"
+    sleep 10
+    exit 0
+fi

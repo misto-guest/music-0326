@@ -1,24 +1,43 @@
 # List of device IDs, one per line
 # Lines starting with # are ignored
 # Empty lines are also ignored
+# format: 
+# phone-box-id,serial,command to launch,
+# ('youtube', 'ytm', 'yt', 'apple', 'am', 'amazon', 'amz', 'tidal', 'beatport')
 
-R3CR100RZMH
-R3CR10HJ94R
-R3CR202S10A
-R3CR707G1FF
-R5CNC0RZSNW
-R5CR11KHW4W
-R5CR128DBWB
-R5CR60LS9JX
-R5CR70MQ79H
-R5CR70SM7WR
-R5CR70V87SL
-R5CR70V8SFR
-R5CR71C2VNK
-R5CR80RMVXD
-R5CR82J4H0H
-R5CR92M73NN
-R5CRB2FP6PL
-R5CRC2JA5NK
-R5CRC38FN7N
-RFCT5128G1D
+# =====================================
+# ACTIVE DEVICES
+# =====================================
+04,R3CR707G1FF,"sall --exclude amazon youtube"
+05,R5CR11KHW4W,"sall --exclude amazon youtube"
+06,RFCT5128G1D,"sall --exclude amazon youtube"
+07,R5CR128DBWB,"sall --exclude amazon youtube"
+08,R5CR80RMVXD,"sall --exclude amazon youtube"
+09,R5CR70V8SFR,"sall --exclude amazon youtube"
+10,R5CR92M73NN,"sall --exclude amazon youtube"
+11,R3CR202S10A,"sall --exclude amazon youtube"
+12,R5CR71C2VNK,"sall --exclude amazon youtube"
+13,R5CR60LS9JX,"sall --exclude amazon youtube"
+14,R3CR100RZMH,"sall --exclude amazon youtube"
+15,R5CR70V87SL,"sall --exclude amazon youtube"
+16,R5CRC2JA5NK,"sall --exclude amazon youtube"
+17,R5CNC0RZSNW,"sall --exclude amazon youtube"
+18,R5CR70SM7WR,"sall --exclude amazon youtube"
+19,R3CR10HJ94R,"sall --exclude amazon youtube"
+21,R5CRC38FN7N,"sall --exclude amazon youtube"
+22,R5CRB2FP6PL,"sall --exclude amazon youtube"
+23,R5CR70MQ79H,"sall --exclude amazon youtube"
+28,R5CRC32LFMN,"sall --exclude amazon youtube"
+29,R5CW51LEZVP,"sall --exclude amazon youtube"
+31,R5CT43BZMRR,"sall --exclude amazon youtube"
+32,R5CT236E85J,"sall --exclude amazon youtube"
+33,R5CT92RTMYT,"sall --exclude amazon youtube"
+34,R5CTA12FWXW,"sall --exclude amazon youtube"
+35,R5CT92M9KZN,"sall --exclude amazon youtube"
+37,R5CT814PWZP,"sall --exclude amazon youtube"
+38,RFCT90N0EGZ,"sall --exclude amazon youtube"
+
+# =====================================
+# INACTIVE DEVICES
+# =====================================
+#25,R58K62JA2RB,"sall --exclude amazon youtube"
