@@ -455,11 +455,17 @@ class MultiMusicAutomation(MutexMixin):
             if self.beatport_controller.check_daily_limit_reached():
                 logger.warning("Beatport daily limit already reached, continue setup")
             
-                # What was the reason to skip all setups if daily limit is reached?
+                # FIXME: What was the reason to skip all setups if daily limit is reached?
                 #  It makes no sense, because it caused False for wholeinitial setup process.
                 #  But we check daily limits in loop and show continue run beatport once daily limit is refereshed
                 # so seems we need intialize everything, and in beatport loop actual activity is skipped. At least I hope so.
-                # return False
+
+                # FIXME: we can't just continue here because further handle_initial_setup() again checks limits and returns False.
+                # All this at the end causes fail all apps start. SO we skip intiialization right now and hope it continue working
+                # in main loop after daily limit is refreshed. handle_initial_setup() is called in main loop again ;)))) 
+
+                # FIXME: duplicates, every where!
+                return True
 
             # Force stop Beatport if running
             if not self.beatport_controller.force_stop():
