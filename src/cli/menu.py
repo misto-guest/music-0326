@@ -609,9 +609,12 @@ class CLI:
                     self.display_menu(show_help=True)
                     continue
 
-                if not self.handle_command(command):
+                # never stop cli loop, but 'q' command, quick hack here
+                if command == 'q':
                     logger.info("Exiting...")
                     break
+
+                self.handle_command(command)
 
                 time.sleep(0.5)
 
@@ -623,7 +626,6 @@ class CLI:
                 logger.error(f"Error in CLI loop: {e}")
                 continue
 
-    # fixme: it always returns True. wtf?
     def handle_command(self, command: str) -> bool:
         parts = command.split()
         if not parts:
@@ -646,7 +648,8 @@ class CLI:
             result = func(*args) if args else func()
             if isinstance(result, bool) and not result:
                 logger.error(f"Failed to execute: {description}")
+                return False
             return True
         except Exception as e:
             logger.error(f"Error executing {description}: {e}")
-            return True
+            return False
