@@ -451,15 +451,15 @@ class MultiMusicAutomation(MutexMixin):
         """Initial setup for Beatport with daily limit check."""
         logger.info("Starting Beatport initial setup...")
         try:
-            # What was the reason to skip all setups if daily limit is reached?
-            #  It makes no sense, because it caused False for wholeinitial setup process.
-            #  But we check daily limits in loop and show continue run beatport once daily limit is refereshed
-            # so seems we need intialize everything, and in beatport loop actual activity is skipped. At least I hope so.
-
             # Check if daily limit is already reached
-            # if self.beatport_controller.check_daily_limit_reached():
-            #     logger.warning("Beatport daily limit already reached, skipping setup")
-            #     return False
+            if self.beatport_controller.check_daily_limit_reached():
+                logger.warning("Beatport daily limit already reached, continue setup")
+            
+                # What was the reason to skip all setups if daily limit is reached?
+                #  It makes no sense, because it caused False for wholeinitial setup process.
+                #  But we check daily limits in loop and show continue run beatport once daily limit is refereshed
+                # so seems we need intialize everything, and in beatport loop actual activity is skipped. At least I hope so.
+                # return False
 
             # Force stop Beatport if running
             if not self.beatport_controller.force_stop():
