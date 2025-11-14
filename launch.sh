@@ -39,6 +39,24 @@ load_devices() {
     echo "Loaded ${#DEVICE_LINES[@]} device(s) from $DEVICES_FILE"
 }
 
+get_app_name_by_device_num() {
+    NUM=$1
+    if [[ ${#NUM} == 1 ]]; then
+        NUM="0$NUM"
+    fi
+    for DEVICE_LINE in "${DEVICE_LINES[@]}"; do
+        IFS=',' read -r ID DEVICE_ID COMMAND <<< "$DEVICE_LINE"
+        if [[ $ID == $NUM ]]; then
+            # Remove quotes around COMMAND if present
+            COMMAND=${COMMAND//\"/}
+            CMD_TXT=${COMMAND// /_}
+            NAME_TXT="#${ID}-${DEVICE_ID}-${CMD_TXT}"
+            echo "$NAME_TXT"
+            return
+        fi
+    done
+}
+
 # Generate PM2 ecosystem configuration
 generate_pm2_config() {
     echo "Generating PM2 configuration for ${#DEVICE_LINES[@]} devices..."
@@ -52,10 +70,11 @@ generate_pm2_config() {
         # Remove quotes around COMMAND if present
         COMMAND=${COMMAND//\"/}
         CMD_TXT=${COMMAND// /_}
+        NAME_TXT=$(get_app_name_by_device_num $ID)
 
         config_content+="
     {
-      name: '#${ID}-${DEVICE_ID}-${CMD_TXT}',
+      name: '$NAME_TXT',
       script: './run_device.sh',
       args: '',
       max_memory_restart: '1G',
@@ -122,6 +141,31 @@ show_status() {
     pm2 status
 }
 
+# Restart one instance by device index
+restart_by_device_num() {
+    ID=$1
+    if [[ ${#ID} == 1 ]]; then
+        ID="0$ID"
+    fi
+    if [ -z "$ID" ]; then
+        echo "Missing device ID"
+        echo "Usage: $0 restart-by-id <device_id>"
+        exit 1
+    fi
+    ID_TXT="#$ID-"
+    pm2_id=$(pm2 list | grep "$ID_TXT" | awk '{print $2}' | head -n 1)
+    if [ -z "$pm2_id" ]; then
+        echo "No instance running for device ID: $ID"
+        exit 1
+    fi
+
+    generate_pm2_config
+
+    NAME=$(get_app_name_by_device_num $ID)
+    echo "Restarting instance $pm2_id: $NAME"
+    pm2 restart "$pm2_id" --name "$NAME" 
+}
+
 # Main script execution
 load_devices
 
@@ -136,6 +180,9 @@ case "$1" in
         stop_instances
         start_instances
         ;;
+    restart-by-num)
+        restart_by_device_num "$2"
+        ;;
     status)
         show_status
         ;;
@@ -147,6 +194,7 @@ case "$1" in
         echo "  start          - Start all instances"
         echo "  stop           - Stop all instances"
         echo "  restart        - Restart all instances"
+        echo "  restart-by-num  - Restart one instance by device num"
         echo "  status         - Show status"
         echo "  generate-config - Regenerate PM2 config file"
         exit 1
