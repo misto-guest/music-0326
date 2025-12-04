@@ -17,9 +17,11 @@ logger = setup_logger(__name__)
 class CLI:
     """Command Line Interface for music app automation."""
 
-    def __init__(self, device_id: str):
+    def __init__(self, device_id: str, primary_user_id: int = 0, secondary_user_id: int = 11):
         """Initialize CLI with device controller."""
         self.device_id = device_id
+        self.primary_user_id = primary_user_id
+        self.secondary_user_id = secondary_user_id
         logger.info(f"Initializing CLI for device: {device_id}")
         self.controller = DeviceController(device_id)
         self.automation: Optional[MultiMusicAutomation] = None
@@ -42,25 +44,25 @@ class CLI:
 
             # Apple Music Controls
             'aplay1': ('Apple Music (1): Play/Pause',
-                   lambda: self.controller.app_controllers['apple_music'].play_pause(user_id=0)),
+                   lambda: self.controller.app_controllers['apple_music'].play_pause(self.primary_user_id)),
             'aplay2': ('Apple Music (2): Play/Pause',
-                   lambda: self.controller.app_controllers['apple_music'].play_pause(user_id=11)),
+                   lambda: self.controller.app_controllers['apple_music'].play_pause(self.secondary_user_id)),
             'anxt1': ('Apple Music (1): Next Track',
-                   lambda: self.controller.app_controllers['apple_music'].next_track(user_id=0)),
+                   lambda: self.controller.app_controllers['apple_music'].next_track(self.primary_user_id)),
             'anxt2': ('Apple Music (2): Next Track',
-                   lambda: self.controller.app_controllers['apple_music'].next_track(user_id=11)),
+                   lambda: self.controller.app_controllers['apple_music'].next_track(self.secondary_user_id)),
             'aprev1': ('Apple Music (1): Previous Track',
-                   lambda: self.controller.app_controllers['apple_music'].previous_track(user_id=0)),
+                   lambda: self.controller.app_controllers['apple_music'].previous_track(self.primary_user_id)),
             'aprev2': ('Apple Music (2): Previous Track',
-                   lambda: self.controller.app_controllers['apple_music'].previous_track(user_id=11)),
+                   lambda: self.controller.app_controllers['apple_music'].previous_track(self.secondary_user_id)),
             'aiso1': ('Apple Music (1): IsoClipboard',
-                   lambda: self.controller.app_controllers['apple_music'].handle_isoclipboard(user_id=0)),
+                   lambda: self.controller.app_controllers['apple_music'].handle_isoclipboard(self.primary_user_id)),
             'aiso2': ('Apple Music (2): IsoClipboard',
-                   lambda: self.controller.app_controllers['apple_music'].handle_isoclipboard(user_id=11)),
+                   lambda: self.controller.app_controllers['apple_music'].handle_isoclipboard(self.secondary_user_id)),
             'alk1': ('Apple Music (1): Like Current Song',
-                   lambda: self.controller.app_controllers['apple_music'].like_current_song(user_id=0)),
+                   lambda: self.controller.app_controllers['apple_music'].like_current_song(self.primary_user_id)),
             'alk2': ('Apple Music (2): Like Current Song',
-                   lambda: self.controller.app_controllers['apple_music'].like_current_song(user_id=11)),
+                   lambda: self.controller.app_controllers['apple_music'].like_current_song(self.secondary_user_id)),
 
             # Amazon Music Controls
             'm1': ('Amazon Music: Play/Pause',
@@ -76,51 +78,51 @@ class CLI:
 
             # Tidal Music Controls
             'tplay1': ('Tidal Music (1): Play/Pause',
-                   lambda: self.controller.app_controllers['tidal_music'].play_pause(user_id=0)),
+                   lambda: self.controller.app_controllers['tidal_music'].play_pause(self.primary_user_id)),
             'tplay2': ('Tidal Music (2): Play/Pause',
-                   lambda: self.controller.app_controllers['tidal_music'].play_pause(user_id=11)),
+                   lambda: self.controller.app_controllers['tidal_music'].play_pause(self.secondary_user_id)),
             'tnxt1': ('Tidal Music (1): Next Track',
-                   lambda: self.controller.app_controllers['tidal_music'].next_track(user_id=0)),
+                   lambda: self.controller.app_controllers['tidal_music'].next_track(self.primary_user_id)),
             'tnxt2': ('Tidal Music (2): Next Track',
-                   lambda: self.controller.app_controllers['tidal_music'].next_track(user_id=11)),
+                   lambda: self.controller.app_controllers['tidal_music'].next_track(self.secondary_user_id)),
             'tprev1': ('Tidal Music (1): Previous Track',
-                   lambda: self.controller.app_controllers['tidal_music'].previous_track(user_id=0)),
+                   lambda: self.controller.app_controllers['tidal_music'].previous_track(self.primary_user_id)),
             'tprev2': ('Tidal Music (2): Previous Track',
-                   lambda: self.controller.app_controllers['tidal_music'].previous_track(user_id=11)),
+                   lambda: self.controller.app_controllers['tidal_music'].previous_track(self.secondary_user_id)),
             'tiso1': ('Tidal Music (1): IsoClipboard',
-                   lambda: self.controller.app_controllers['tidal_music'].handle_isoclipboard(user_id=0)),
+                   lambda: self.controller.app_controllers['tidal_music'].handle_isoclipboard(self.primary_user_id)),
             'tiso2': ('Tidal Music (2): IsoClipboard',
-                   lambda: self.controller.app_controllers['tidal_music'].handle_isoclipboard(user_id=11)),
+                   lambda: self.controller.app_controllers['tidal_music'].handle_isoclipboard(self.secondary_user_id)),
             'tlk1': ('Tidal Music (1): Like Current Song',
-                   lambda: self.controller.app_controllers['tidal_music'].like_current_song(user_id=0)),
+                   lambda: self.controller.app_controllers['tidal_music'].like_current_song(self.primary_user_id)),
             'tlk2': ('Tidal Music (2): Like Current Song',
-                   lambda: self.controller.app_controllers['tidal_music'].like_current_song(user_id=11)),
+                   lambda: self.controller.app_controllers['tidal_music'].like_current_song(self.secondary_user_id)),
 
             # Beatport Controls
             'bplay1': ('Beatport (1): Play/Pause',
-                   lambda: self.controller.app_controllers['beatport_music'].play_pause(user_id=0)),
+                   lambda: self.controller.app_controllers['beatport_music'].play_pause(self.primary_user_id)),
             'bplay2': ('Beatport (2): Play/Pause',
-                   lambda: self.controller.app_controllers['beatport_music'].play_pause(user_id=11)),
+                   lambda: self.controller.app_controllers['beatport_music'].play_pause(self.secondary_user_id)),
             'bnxt1': ('Beatport (1): Next Track',
-                   lambda: self.controller.app_controllers['beatport_music'].next_track(user_id=0)),
+                   lambda: self.controller.app_controllers['beatport_music'].next_track(self.primary_user_id)),
             'bnxt2': ('Beatport (2): Next Track',
-                   lambda: self.controller.app_controllers['beatport_music'].next_track(user_id=11)),
+                   lambda: self.controller.app_controllers['beatport_music'].next_track(self.secondary_user_id)),
             'bprev1': ('Beatport (1): Previous Track',
-                   lambda: self.controller.app_controllers['beatport_music'].previous_track(user_id=0)),
+                   lambda: self.controller.app_controllers['beatport_music'].previous_track(self.primary_user_id)),
             'bprev2': ('Beatport (2): Previous Track',
-                   lambda: self.controller.app_controllers['beatport_music'].previous_track(user_id=11)),
+                   lambda: self.controller.app_controllers['beatport_music'].previous_track(self.secondary_user_id)),
             'binit1': ('Beatport (1): Initial Setup',
-                   lambda: self.controller.app_controllers['beatport_music'].handle_initial_setup(user_id=0)),
+                   lambda: self.controller.app_controllers['beatport_music'].handle_initial_setup(self.primary_user_id)),
             'binit2': ('Beatport (2): Initial Setup',
-                   lambda: self.controller.app_controllers['beatport_music'].handle_initial_setup(user_id=11)),
+                   lambda: self.controller.app_controllers['beatport_music'].handle_initial_setup(self.secondary_user_id)),
             'blk1': ('Beatport (1): Like Current Song',
-                   lambda: self.controller.app_controllers['beatport_music'].like_current_song()),
+                   lambda: self.controller.app_controllers['beatport_music'].like_current_song(self.primary_user_id)),
             'blk2': ('Beatport (2): Like Current Song',
-                   lambda: self.controller.app_controllers['beatport_music'].like_current_song()),
+                   lambda: self.controller.app_controllers['beatport_music'].like_current_song(self.secondary_user_id)),
             'bpts1': ('Beatport (1): Show Playtime Status',
-                   lambda: self.controller.app_controllers['beatport_music'].check_daily_limit_reached()),
+                   lambda: self.controller.app_controllers['beatport_music'].check_daily_limit_reached(self.primary_user_id)),
             'bpts2': ('Beatport (2): Show Playtime Status',
-                   lambda: self.controller.app_controllers['beatport_music'].check_daily_limit_reached()),
+                   lambda: self.controller.app_controllers['beatport_music'].check_daily_limit_reached(self.secondary_user_id)),
 
             # Single App Automation
             'sy': ('Start YouTube Music Only', self.start_youtube_automation),
@@ -248,11 +250,11 @@ class CLI:
                 return False
 
             # Perform initial setup if needed
-            if not beatport_controller.is_running():
-                logger.info("Performing initial Beatport setup...")
-                if not beatport_controller.handle_initial_setup():
-                    logger.error("Failed to set up Beatport")
-                    return False
+            # if not beatport_controller.is_running():
+            #     logger.info("Performing initial Beatport setup...")
+            #     if not beatport_controller.handle_initial_setup():
+            #         logger.error("Failed to set up Beatport")
+            #         return False
 
             # Initialize automation
             if not self.automation:
@@ -609,18 +611,13 @@ class CLI:
             if not key.startswith(('y', 'a', 'm', 't', 'b', 's')):
                 print(f"{key} - {description}")
 
-    def run(self, initial_command: str = None):
+    def run(self):
         """Run the main CLI loop."""
         logger.info(f"Running CLI for device: {self.device_id}")
         while True:
             try:
-                if not initial_command:
-                    self.display_menu(show_help='--help' in sys.argv)
-                    command = input("\nEnter command: ").lower().strip()
-                else:
-                    command = initial_command
-                    initial_command = None
-                
+                self.display_menu(show_help='--help' in sys.argv)
+                command = input("\nEnter command: ").lower().strip()
                 if command in ['--help', '-h']:
                     self.display_menu(show_help=True)
                     continue

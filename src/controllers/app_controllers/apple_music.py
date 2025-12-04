@@ -328,12 +328,12 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
     def stop_app(self, user_id: int) -> bool:
         """Stop Apple Music app."""
         try:
-            self.device.app_stop(self.package_name)
+            self.device.shell(f"am force-stop --user {user_id} {self.package_name}")
             time.sleep(1)
             # Verify app is actually stopped
             if self.is_running():
                 logger.warning("App still running after stop attempt, trying force-stop")
-                return self.force_stop()
+                return self.force_stop(user_id)
             return True
         except Exception as e:
             logger.error(f"Error stopping Apple Music: {e}")
@@ -358,7 +358,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
     def force_stop(self, user_id: int) -> bool:
         """Force stop Apple Music."""
         try:
-            self.device.app_stop(self.package_name)
+            self.device.shell(f"am force-stop --user {user_id} {self.package_name}")
             time.sleep(1)
             return True
         except Exception as e:
@@ -598,12 +598,12 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 return False
 
             # Start IsoClipboard
-            if not self._start_isoclipboard_safely():
+            if not self._start_isoclipboard_safely(user_id):
                 if self.needs_restart("IsoClipboard"):
                     logger.info("Retrying IsoClipboard after force-close")
                     self.clear_restart_flag("IsoClipboard")
                     time.sleep(2)
-                    if not self._start_isoclipboard_safely():
+                    if not self._start_isoclipboard_safely(user_id):
                         return False
                 else:
                     return False
@@ -619,6 +619,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 time.sleep(2)
                 if not self.prepare_for_action(user_id):
                     return False
+
 
             # Shuffle + miniplayer
             if not self._handle_shuffle_and_miniplayer():
@@ -650,7 +651,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
 
             self.device.app_stop(self.isoclipboard_package)
             time.sleep(1)
-            self.device.shell(f'am start --user {user_id} -W -n {self.isoclipboard_package}/.onboarding.activities.SplashActivity --activity-single-top')
+            self.device.shell(f'am start --user {user_id} -W -n {self.isoclipboard_package}/.MainActivity --activity-single-top')
             time.sleep(3)
 
             if not self._verify_rotation_disabled():
@@ -677,7 +678,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 time.sleep(1)
                 self.device.press("home")
                 time.sleep(1)
-                self.device.shell(f'am start --user {user_id} -W -n {self.isoclipboard_package}/.onboarding.activities.SplashActivity --activity-single-top')
+                self.device.shell(f'am start --user {user_id} -W -n {self.isoclipboard_package}/.MainActivity --activity-single-top')
                 time.sleep(2)
 
             logger.error(f"Apple Music: Failed to bring IsoClipboard to foreground on attempt {attempt + 1}")
@@ -740,7 +741,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
                 if mini.exists:
                     mini.click()
                     logger.info(f"Clicked miniplayer using selector: {selector}")
-                    time.sleep(1)
+                    time.sleep(2)
                     return True
 
             logger.error("Miniplayer not found after trying multiple selectors")

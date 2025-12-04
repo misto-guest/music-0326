@@ -136,12 +136,12 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
                 logger.error("Failed to disable rotation")
                 return False
 
-            if not self._start_isoclipboard_safely():
+            if not self._start_isoclipboard_safely(user_id):
                 if self.needs_restart("IsoClipboard"):
                     logger.info("Retrying IsoClipboard after force-close")
                     self.clear_restart_flag("IsoClipboard")
                     time.sleep(2)
-                    if not self._start_isoclipboard_safely():
+                    if not self._start_isoclipboard_safely(user_id):
                         return False
                 else:
                     return False
@@ -472,11 +472,11 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
     def stop_app(self, user_id: int) -> bool:
         """Stop Tidal app and restore rotation state if desired at session end."""
         try:
-            self.device.app_stop(self.package_name)
+            self.device.shell(f"am force-stop --user {user_id} {self.package_name}")
             time.sleep(1)
             if self.is_running():
                 logger.warning("App still running after stop attempt, trying force-stop")
-                return self.force_stop()
+                return self.force_stop(user_id)
 
             if self.initial_rotation_state:
                 self._restore_rotation_state(self.initial_rotation_state)
@@ -527,7 +527,7 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
     def force_stop(self, user_id: int) -> bool:
         """Force stop Tidal."""
         try:
-            self.device.app_stop(self.package_name)
+            self.device.shell(f"am force-stop --user {user_id} {self.package_name}")
             time.sleep(1)
             return True
         except Exception as e:
