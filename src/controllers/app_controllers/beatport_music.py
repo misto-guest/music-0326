@@ -876,24 +876,21 @@ class BeatportMusicController(BaseController, PopupMonitorMixin):
             return False
 
     def stop_app(self, user_id: int) -> bool:
-        """Stop Beatport for a specific user and save final playtime."""
+        """Stop Beatport app and restore rotation state if desired at session end."""
         try:
-            self._update_playtime(user_id)
-
             self.device.shell(f"am force-stop --user {user_id} {self.package_name}")
             time.sleep(1)
-
             if self.is_running(user_id):
-                logger.warning(
-                    f"App still running for user {user_id}, forcing stop again"
-                )
+                logger.warning("App still running after stop attempt, trying force-stop")
                 return self.force_stop(user_id)
 
             if self.initial_rotation_state:
                 self._restore_rotation_state(self.initial_rotation_state)
-
-            logger.info(f"Restored rotation state and stopped Beatport for user {user_id}")
+            logger.info("Restored rotation state after stopping Beatport.")
             return True
+        except Exception as e:
+            logger.error(f"Error stopping Beatport: {e}")
+            return False
 
         except Exception as e:
             logger.error(f"Error stopping Beatport for user {user_id}: {e}")

@@ -461,7 +461,7 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
             command_output = result.output
             
             if f"u{user_id}" in command_output:
-                logger.info("Tidal is current app for current user")
+                logger.info(f"Tidal is current app for user {user_id}")
                 return True
 
             return False
@@ -474,7 +474,7 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
         try:
             self.device.shell(f"am force-stop --user {user_id} {self.package_name}")
             time.sleep(1)
-            if self.is_running():
+            if self.is_running(user_id):
                 logger.warning("App still running after stop attempt, trying force-stop")
                 return self.force_stop(user_id)
 

@@ -331,7 +331,7 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             self.device.shell(f"am force-stop --user {user_id} {self.package_name}")
             time.sleep(1)
             # Verify app is actually stopped
-            if self.is_running():
+            if self.is_running(user_id):
                 logger.warning("App still running after stop attempt, trying force-stop")
                 return self.force_stop(user_id)
             return True
@@ -339,20 +339,18 @@ class AppleMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error stopping Apple Music: {e}")
             return False
 
-    def is_running(self) -> bool:
+    def is_running(self, user_id: int) -> bool:
         try:
-            # Check if any UI element with the Apple Music package exists.
-            if self.device(packageName=self.package_name).exists:
-                return True
-
-            # Optionally, check the recents output for the internal alias.
-            recents = self.device.shell("dumpsys activity recents | grep -i '.amcKGERRbgaxjBBPED'")
-            if recents and ".amcKGERRbgaxjBBPED" in recents.output:
+            result = self.device.shell("dumpsys activity recents | grep " + self.package_name)
+            command_output = result.output
+            
+            if f"u{user_id}" in command_output:
+                logger.info(f"AppleMusic is current app for user {user_id}")
                 return True
 
             return False
         except Exception as e:
-            logger.error(f"Error checking if Apple Music is running: {e}")
+            logger.error(f"Error verifying app state: {e}")
             return False
 
     def force_stop(self, user_id: int) -> bool:

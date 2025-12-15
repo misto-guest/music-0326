@@ -568,7 +568,7 @@ class MultiMusicAutomation(MutexMixin):
                 logger.info(f"Apple Music initial setup for user {uid}...")
                 if not self.apple_controller.force_stop(uid):
                     logger.warning(f"Failed to close Apple Music for user {uid}")
-                time.sleep(2)
+                time.sleep(4)
                 if not self.apple_controller.handle_isoclipboard(uid):
                     logger.error(
                         f"Apple Music iso-clipboard setup failed for user {uid}"

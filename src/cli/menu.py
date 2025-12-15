@@ -141,10 +141,13 @@ class CLI:
             'status': ('Show Automation Status', self.show_automation_status),
 
             # General Commands
-            'c': ('Close Music Apps', self.controller.close_music_recent_apps),
-            'r': ('Check Running Music Apps', self.controller.check_running_music_apps),
-            'q': ('Quit', None)
+            'c': ('Close Music Apps', lambda: self.controller.close_music_recent_apps(self.primary_user_id, self.secondary_user_id)),
+            'r': ('Check Running Music Apps', lambda: self.controller.check_running_music_apps(self.primary_user_id, self.secondary_user_id)),
+            'q': ('Quit', self.quit)
         }
+
+    def quit(self):
+        raise SystemExit(0)
 
     def find_closest_match(self, input_param, known_params):
         matches = get_close_matches(input_param, known_params, n=1, cutoff=0.6)
