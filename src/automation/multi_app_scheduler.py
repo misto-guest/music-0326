@@ -38,7 +38,6 @@ class MultiMusicAutomation(MutexMixin):
 
         # Multi-user support for these apps (auto-detected from the device)
         active_user_ids = self._get_active_user_ids_from_device()
-        active_user_ids = [0, 11]
         self.apple_user_ids: List[int] = active_user_ids
         self.tidal_user_ids: List[int] = active_user_ids
         self.beatport_user_ids: List[int] = active_user_ids
