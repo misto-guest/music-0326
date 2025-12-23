@@ -2,8 +2,6 @@ import random
 import threading
 from queue import Queue, Empty
 import time
-import subprocess
-import re
 from typing import Optional, Dict, Tuple, Callable, List, Union
 
 from src.utils.logging_utils import setup_logger
@@ -25,6 +23,11 @@ class MultiMusicAutomation(MutexMixin):
         amazon_controller: Optional[AmazonMusicController] = None,
         tidal_controller: Optional[TidalMusicController] = None,
         beatport_controller: Optional[BeatportMusicController] = None,
+        primary_user_id: int = 0,
+        secondary_user_id: Optional[int] = None,
+        apple_user_ids: Optional[List[int]] = None,
+        tidal_user_ids: Optional[List[int]] = None,
+        beatport_user_ids: Optional[List[int]] = None,
     ):
         super().__init__()
         self.youtube_controller = youtube_controller
@@ -36,11 +39,18 @@ class MultiMusicAutomation(MutexMixin):
         self.running = False
         self.paused = False
 
-        # Multi-user support for these apps (auto-detected from the device)
-        active_user_ids = self._get_active_user_ids_from_device()
-        self.apple_user_ids: List[int] = active_user_ids
-        self.tidal_user_ids: List[int] = active_user_ids
-        self.beatport_user_ids: List[int] = active_user_ids
+        # Multi-user support for these apps (provided by caller)
+        self.primary_user_id = primary_user_id
+        self.secondary_user_id = secondary_user_id
+
+        base_user_ids: List[int] = [primary_user_id]
+        if secondary_user_id is not None and secondary_user_id != primary_user_id:
+            base_user_ids.append(secondary_user_id)
+
+        # Per-app user lists (allow empty lists to disable per-user automation)
+        self.apple_user_ids: List[int] = base_user_ids if apple_user_ids is None else list(apple_user_ids)
+        self.tidal_user_ids: List[int] = base_user_ids if tidal_user_ids is None else list(tidal_user_ids)
+        self.beatport_user_ids: List[int] = base_user_ids if beatport_user_ids is None else list(beatport_user_ids)
 
         # Action queue + worker
         self.action_queue: Queue = Queue()
@@ -76,72 +86,56 @@ class MultiMusicAutomation(MutexMixin):
         self.last_beatport_action = 0.0
 
     # -------------------------------------------------------------------------
-    # User/profile detection (Apple / Tidal / Beatport)
+    # User/profile configuration (Apple / Tidal / Beatport)
     # -------------------------------------------------------------------------
-    def _adb_shell_capture(self, shell_cmd: str) -> str:
-        """Run `adb shell <cmd>` and return stdout (best-effort, no raise)."""
-        try:
-            proc = subprocess.run(
-                ["adb", "shell", shell_cmd],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=False,
-            )
-        except FileNotFoundError:
-            logger.error("adb not found on PATH while detecting active users")
-            return ""
-        except Exception as e:
-            logger.error(f"Failed running adb shell while detecting active users: {e}")
-            return ""
-
-        if proc.returncode != 0:
-            # Non-fatal: we'll fall back to older behavior
-            stderr = (proc.stderr or "").strip()
-            if stderr:
-                logger.warning(
-                    f"adb shell returned non-zero while detecting active users: {stderr}"
-                )
-            return proc.stdout or ""
-        return proc.stdout or ""
-
-    def _get_active_user_ids_from_device(self) -> List[int]:
+    def configure_users(
+        self,
+        *,
+        primary_user_id: Optional[int] = None,
+        secondary_user_id: Optional[int] = None,
+        apple_user_ids: Optional[List[int]] = None,
+        tidal_user_ids: Optional[List[int]] = None,
+        beatport_user_ids: Optional[List[int]] = None,
+    ) -> None:
         """
-        Detect active/running Android user/profile IDs.
+        Configure which Android user IDs to use for per-user automation threads.
 
-        We prefer `cmd user list` and extract users marked running/current.
-        If we can't confidently detect, we fall back to the previous default [0, 11]
-        to keep behavior stable.
+        Intended to be called by the CLI layer BEFORE starting automation.
+        No adb detection happens here.
         """
-        # 1) Try `cmd user list`
-        out = self._adb_shell_capture("cmd user list")
-        active: List[int] = []
-        if out:
-            for line in out.splitlines():
-                if "UserInfo{" not in line:
-                    continue
-                m = re.search(r"UserInfo\{(\d+):", line)
-                if not m:
-                    continue
-                if "running" in line.lower() or "current" in line.lower():
-                    active.append(int(m.group(1)))
+        if self.running:
+            logger.warning("Cannot reconfigure user IDs while automation is running")
+            return
 
-        # 2) Fallback: `am get-current-user` (single ID)
-        if not active:
-            cur = self._adb_shell_capture("am get-current-user").strip()
-            if cur.isdigit():
-                active = [int(cur)]
+        if primary_user_id is not None:
+            self.primary_user_id = primary_user_id
+        if secondary_user_id is not None or self.secondary_user_id is None:
+            # allow explicit None to clear, but only if caller passes it
+            self.secondary_user_id = secondary_user_id
 
-        # 3) Final fallback: preserve prior behavior
-        if not active:
-            active = [0]
+        base_user_ids: List[int] = [self.primary_user_id]
+        if self.secondary_user_id is not None and self.secondary_user_id != self.primary_user_id:
+            base_user_ids.append(self.secondary_user_id)
 
-        # De-dupe while preserving order
-        seen = set()
-        active = [uid for uid in active if not (uid in seen or seen.add(uid))]
-        logger.info(f"Active Android user IDs detected: {active}")
-        return active
+        if apple_user_ids is None:
+            self.apple_user_ids = list(base_user_ids)
+        else:
+            self.apple_user_ids = list(apple_user_ids)
 
+        if tidal_user_ids is None:
+            self.tidal_user_ids = list(base_user_ids)
+        else:
+            self.tidal_user_ids = list(tidal_user_ids)
+
+        if beatport_user_ids is None:
+            self.beatport_user_ids = list(base_user_ids)
+        else:
+            self.beatport_user_ids = list(beatport_user_ids)
+
+        # Rebuild per-user thread maps to match configured user IDs
+        self.apple_threads = {uid: None for uid in self.apple_user_ids}
+        self.tidal_threads = {uid: None for uid in self.tidal_user_ids}
+        self.beatport_threads = {uid: None for uid in self.beatport_user_ids}
 
     # -------------------------------------------------------------------------
     # Action queue worker

@@ -17,7 +17,7 @@ logger = setup_logger(__name__)
 class CLI:
     """Command Line Interface for music app automation."""
 
-    def __init__(self, device_id: str, primary_user_id: int = 0, secondary_user_id: int = 11):
+    def __init__(self, device_id: str, primary_user_id: int, secondary_user_id: int):
         """Initialize CLI with device controller."""
         self.device_id = device_id
         self.primary_user_id = primary_user_id
@@ -192,8 +192,8 @@ class CLI:
         # Process specific command validation
         if command == "sall":
             # Known parameters for sall command
-            known_params = {"--exclude", "--help", "--timeout"}
-            registered_apps = {"apple", "youtube", "beatport", "amazon", "tidal"}
+            known_params = {"--exclude", "--exclude-main", "--exclude-second", "--help", "--timeout"}
+            registered_apps = {"apple", "am", "youtube", "ytm", "yt", "amazon", "amz", "tidal", "beatport"}
 
             # Check for parameter typos
             i = 0
@@ -205,7 +205,7 @@ class CLI:
                     return False
 
                 # Check excluded app names
-                if param == "--exclude":
+                if param in ("--exclude", "--exclude-main", "--exclude-second"):
                     if i + 1 >= len(parameters):
                         logger.warning("--exclude flag requires at least one app name")
                         return False
@@ -263,8 +263,9 @@ class CLI:
             if not self.automation:
                 logger.info("Initializing Beatport automation...")
                 self.automation = MultiMusicAutomation(
-                    beatport_controller=beatport_controller
-                )
+                    beatport_controller=beatport_controller,
+                    primary_user_id=self.primary_user_id,
+                    secondary_user_id=self.secondary_user_id)
 
             success = self.automation.start_beatport_only()
             if success:
@@ -285,8 +286,9 @@ class CLI:
             if not self.automation:
                 logger.info("Initializing Tidal Music automation...")
                 self.automation = MultiMusicAutomation(
-                    tidal_controller=self.controller.app_controllers['tidal_music']
-                )
+                    tidal_controller=self.controller.app_controllers['tidal_music'],
+                    primary_user_id=self.primary_user_id,
+                    secondary_user_id=self.secondary_user_id)
             success = self.automation.start_tidal_only()
             if success:
                 logger.info("Tidal Music automation started successfully")
@@ -307,8 +309,9 @@ class CLI:
             if not self.automation:
                 logger.info("Initializing YouTube Music automation...")
                 self.automation = MultiMusicAutomation(
-                    youtube_controller=self.controller.app_controllers['youtube_music']
-                )
+                    youtube_controller=self.controller.app_controllers['youtube_music'],
+                    primary_user_id=self.primary_user_id,
+                    secondary_user_id=self.secondary_user_id)
             success = self.automation.start_youtube_only()
             if success:
                 logger.info("YouTube Music automation started successfully")
@@ -328,8 +331,9 @@ class CLI:
             if not self.automation:
                 logger.info("Initializing Apple Music automation...")
                 self.automation = MultiMusicAutomation(
-                    apple_controller=self.controller.app_controllers['apple_music']
-                )
+                    apple_controller=self.controller.app_controllers['apple_music'],
+                    primary_user_id=self.primary_user_id,
+                    secondary_user_id=self.secondary_user_id)
             success = self.automation.start_apple_only()
             if success:
                 logger.info("Apple Music automation started successfully")
@@ -349,8 +353,9 @@ class CLI:
             if not self.automation:
                 logger.info("Initializing Amazon Music automation...")
                 self.automation = MultiMusicAutomation(
-                    amazon_controller=self.controller.app_controllers['amazon_music']
-                )
+                    amazon_controller=self.controller.app_controllers['amazon_music'],
+                    primary_user_id=self.primary_user_id,
+                    secondary_user_id=self.secondary_user_id)
             success = self.automation.start_amazon_only()
             if success:
                 logger.info("Amazon Music automation started successfully")
@@ -364,82 +369,128 @@ class CLI:
             self.automation = None
             return False
 
+
     def start_all_automation(self, *args) -> bool:
         """
         Start automation for all apps with optional exclusions.
-        Examples:
-            sall                      -> starts all apps
-            sall --exclude beatport   -> starts all apps except Beatport
-            sall --exclude tidal      -> starts all apps except Tidal Music
-            sall --exclude beatport tidal -> starts all apps except Beatport and Tidal
+
+        Supported flags:
+            sall
+            sall --exclude amazon youtube
+            sall --exclude-main apple tidal
+            sall --exclude-second beatport
+            sall --exclude amazon youtube --exclude-main apple --exclude-second beatport
+
+        Notes:
+          - YouTube & Amazon are single-instance in this CLI (no per-user automation threads).
+            If excluded via --exclude-main/--exclude-second, they are treated as globally excluded.
+          - Apple/Tidal/Beatport can be excluded per user because automation runs per Android user ID.
         """
         # If help flag is provided, print usage instructions.
-        if args and args[0] in ['-h', '--help']:
+        if args and args[0] in ["-h", "--help"]:
             print(self.start_all_automation.__doc__)
             return True
 
-        valid_apps = {'youtube', 'ytm', 'yt', 'apple', 'am', 'amazon', 'amz', 'tidal', 'beatport'}
-        exclusions = set()
+        def _normalize_app(token: str) -> Optional[str]:
+            t = token.lower()
+            if t in ("youtube", "ytm", "yt"):
+                return "youtube"
+            if t in ("apple", "am"):
+                return "apple"
+            if t in ("amazon", "amz"):
+                return "amazon"
+            if t == "tidal":
+                return "tidal"
+            if t == "beatport":
+                return "beatport"
+            return None
 
-        # Check for valid flag format and arguments
+        # Canonical apps
+        exclude_both = set()
+        exclude_main = set()
+        exclude_second = set()
+
+        # Parse flags
         i = 0
         while i < len(args):
-            arg = args[i].lower()
+            arg = str(args[i]).lower()
 
-            # Handle --exclude flag
-            if arg == "--exclude":
-                # Check if we have apps to exclude
+            if arg in ("--exclude", "--exclude-main", "--exclude-second"):
                 if i + 1 >= len(args):
-                    logger.warning("No apps specified after --exclude flag")
+                    logger.warning(f"No apps specified after {arg} flag")
                     return False
 
-                # Collect excluded apps
+                target = exclude_both if arg == "--exclude" else exclude_main if arg == "--exclude-main" else exclude_second
+
                 i += 1
-                exclude_found = False
-                while i < len(args) and not args[i].startswith("-"):
-                    app = args[i].lower()
-                    exclude_found = True
-                    if app not in valid_apps:
-                        logger.warning(f"Unknown app: {app}")
-                        logger.info(f"Available apps: {', '.join(sorted(valid_apps))}")
+                found_any = False
+                while i < len(args) and not str(args[i]).startswith("-"):
+                    found_any = True
+                    app = _normalize_app(str(args[i]))
+                    if not app:
+                        logger.warning(f"Unknown app: {args[i]}")
+                        logger.info("Available apps: youtube, apple, amazon, tidal, beatport")
                         return False
-                    exclusions.add(app)
+                    target.add(app)
                     i += 1
 
-                if not exclude_found:
-                    logger.warning("No valid apps specified after --exclude flag")
+                if not found_any:
+                    logger.warning(f"No valid apps specified after {arg} flag")
                     return False
                 continue
 
-            # Invalid flag format (single dash)
-            elif arg.startswith("-"):
-                if arg == "-exclude":
-                    logger.warning("Invalid flag format: -exclude, use --exclude instead")
-                else:
-                    logger.warning(f"Unknown or invalid parameter: {arg}")
+            # Unknown flags
+            if arg.startswith("-"):
+                logger.warning(f"Unknown flag: {args[i]}")
                 return False
 
-            # Regular argument (should not exist in this command)
-            else:
-                logger.warning(f"Unexpected argument: {arg}. Use --exclude to specify apps to exclude.")
-                return False
+            # Bare tokens are not allowed (must be under a flag)
+            logger.warning(f"Unexpected token: {args[i]}")
+            return False
 
-            i += 1
+        # Single-instance apps: treat per-user excludes as global excludes
+        global_exclusions = set(exclude_both)
+        if "youtube" in exclude_main or "youtube" in exclude_second:
+            global_exclusions.add("youtube")
+        if "amazon" in exclude_main or "amazon" in exclude_second:
+            global_exclusions.add("amazon")
 
-        logger.info(f"Starting automation with exclusions: {exclusions}")
+        logger.info(
+            f"Starting automation with global exclusions: {sorted(global_exclusions)}; "
+            f"exclude-main: {sorted(exclude_main)}; exclude-second: {sorted(exclude_second)}"
+        )
 
-        # Map exclusions to controllers
-        yt_controller = None if any(
-            x in ['youtube', 'ytm', 'yt'] for x in exclusions) else self.controller.app_controllers.get('youtube_music')
-        apple_controller = None if any(
-            x in ['apple', 'am'] for x in exclusions) else self.controller.app_controllers.get('apple_music')
-        amazon_controller = None if any(
-            x in ['amazon', 'amz'] for x in exclusions) else self.controller.app_controllers.get('amazon_music')
-        tidal_controller = None if 'tidal' in exclusions else self.controller.app_controllers.get('tidal_music')
-        beatport_controller = None if 'beatport' in exclusions else self.controller.app_controllers.get(
-            'beatport_music')
+        # Base user IDs (dedupe while preserving order)
+        base_users: List[int] = []
+        for uid in (self.primary_user_id, self.secondary_user_id):
+            if uid not in base_users:
+                base_users.append(uid)
 
-        # Initialize automation with the filtered controllers
+        def _allowed_users(app: str) -> List[int]:
+            users = list(base_users)
+            if app in exclude_both:
+                return []
+            if app in exclude_main and self.primary_user_id in users:
+                users.remove(self.primary_user_id)
+            if app in exclude_second and self.secondary_user_id in users:
+                users.remove(self.secondary_user_id)
+            return users
+
+        # Controllers (None means excluded)
+        yt_controller = None if "youtube" in global_exclusions else self.controller.app_controllers.get("youtube_music")
+        amazon_controller = None if "amazon" in global_exclusions else self.controller.app_controllers.get("amazon_music")
+
+        # Multi-user apps: controller is excluded if no users remain
+        apple_users = _allowed_users("apple")
+        apple_controller = None if (not apple_users) else self.controller.app_controllers.get("apple_music")
+
+        tidal_users = _allowed_users("tidal")
+        tidal_controller = None if (not tidal_users) else self.controller.app_controllers.get("tidal_music")
+
+        beatport_users = _allowed_users("beatport")
+        beatport_controller = None if (not beatport_users) else self.controller.app_controllers.get("beatport_music")
+
+        # Initialize or update automation with provided user IDs/lists
         if not self.automation:
             logger.info("Initializing music apps automation...")
             self.automation = MultiMusicAutomation(
@@ -447,16 +498,34 @@ class CLI:
                 apple_controller=apple_controller,
                 amazon_controller=amazon_controller,
                 tidal_controller=tidal_controller,
-                beatport_controller=beatport_controller
+                beatport_controller=beatport_controller,
+                primary_user_id=self.primary_user_id,
+                secondary_user_id=self.secondary_user_id,
+                apple_user_ids=apple_users,
+                tidal_user_ids=tidal_users,
+                beatport_user_ids=beatport_users,
+            )
+        else:
+            # Keep behavior stable: reuse the object, but refresh controllers and user lists
+            self.automation.youtube_controller = yt_controller
+            self.automation.apple_controller = apple_controller
+            self.automation.amazon_controller = amazon_controller
+            self.automation.tidal_controller = tidal_controller
+            self.automation.beatport_controller = beatport_controller
+            self.automation.configure_users(
+                primary_user_id=self.primary_user_id,
+                secondary_user_id=self.secondary_user_id,
+                apple_user_ids=apple_users,
+                tidal_user_ids=tidal_users,
+                beatport_user_ids=beatport_users,
             )
 
         success = self.automation.start_automation()
         if success:
-            logger.info("Music apps automation started successfully")
+            logger.info("All apps automation started successfully")
             return True
         else:
-            logger.error("Failed to start music apps automation")
-            self.automation = None
+            logger.error("Failed to start apps automation")
             return False
 
     def stop_automation(self) -> bool:
