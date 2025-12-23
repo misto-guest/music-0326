@@ -2,6 +2,8 @@ import random
 import threading
 from queue import Queue, Empty
 import time
+import subprocess
+import re
 from typing import Optional, Dict, Tuple, Callable, List, Union
 
 from src.utils.logging_utils import setup_logger
@@ -34,10 +36,12 @@ class MultiMusicAutomation(MutexMixin):
         self.running = False
         self.paused = False
 
-        # Multi-user support for these apps
-        self.apple_user_ids: List[int] = [0, 11]
-        self.tidal_user_ids: List[int] = [0, 11]
-        self.beatport_user_ids: List[int] = [0, 11]
+        # Multi-user support for these apps (auto-detected from the device)
+        active_user_ids = self._get_active_user_ids_from_device()
+        active_user_ids = [0, 11]
+        self.apple_user_ids: List[int] = active_user_ids
+        self.tidal_user_ids: List[int] = active_user_ids
+        self.beatport_user_ids: List[int] = active_user_ids
 
         # Action queue + worker
         self.action_queue: Queue = Queue()
@@ -71,6 +75,74 @@ class MultiMusicAutomation(MutexMixin):
         self.last_amazon_action = 0.0
         self.last_tidal_action = 0.0
         self.last_beatport_action = 0.0
+
+    # -------------------------------------------------------------------------
+    # User/profile detection (Apple / Tidal / Beatport)
+    # -------------------------------------------------------------------------
+    def _adb_shell_capture(self, shell_cmd: str) -> str:
+        """Run `adb shell <cmd>` and return stdout (best-effort, no raise)."""
+        try:
+            proc = subprocess.run(
+                ["adb", "shell", shell_cmd],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            )
+        except FileNotFoundError:
+            logger.error("adb not found on PATH while detecting active users")
+            return ""
+        except Exception as e:
+            logger.error(f"Failed running adb shell while detecting active users: {e}")
+            return ""
+
+        if proc.returncode != 0:
+            # Non-fatal: we'll fall back to older behavior
+            stderr = (proc.stderr or "").strip()
+            if stderr:
+                logger.warning(
+                    f"adb shell returned non-zero while detecting active users: {stderr}"
+                )
+            return proc.stdout or ""
+        return proc.stdout or ""
+
+    def _get_active_user_ids_from_device(self) -> List[int]:
+        """
+        Detect active/running Android user/profile IDs.
+
+        We prefer `cmd user list` and extract users marked running/current.
+        If we can't confidently detect, we fall back to the previous default [0, 11]
+        to keep behavior stable.
+        """
+        # 1) Try `cmd user list`
+        out = self._adb_shell_capture("cmd user list")
+        active: List[int] = []
+        if out:
+            for line in out.splitlines():
+                if "UserInfo{" not in line:
+                    continue
+                m = re.search(r"UserInfo\{(\d+):", line)
+                if not m:
+                    continue
+                if "running" in line.lower() or "current" in line.lower():
+                    active.append(int(m.group(1)))
+
+        # 2) Fallback: `am get-current-user` (single ID)
+        if not active:
+            cur = self._adb_shell_capture("am get-current-user").strip()
+            if cur.isdigit():
+                active = [int(cur)]
+
+        # 3) Final fallback: preserve prior behavior
+        if not active:
+            active = [0]
+
+        # De-dupe while preserving order
+        seen = set()
+        active = [uid for uid in active if not (uid in seen or seen.add(uid))]
+        logger.info(f"Active Android user IDs detected: {active}")
+        return active
+
 
     # -------------------------------------------------------------------------
     # Action queue worker
