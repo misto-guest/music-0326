@@ -683,13 +683,18 @@ class CLI:
             if not key.startswith(('y', 'a', 'm', 't', 'b', 's')):
                 print(f"{key} - {description}")
 
-    def run(self):
+    def run(self, initial_command: str = None):
         """Run the main CLI loop."""
         logger.info(f"Running CLI for device: {self.device_id}")
         while True:
             try:
-                self.display_menu(show_help='--help' in sys.argv)
-                command = input("\nEnter command: ").lower().strip()
+                if not initial_command:
+                    self.display_menu(show_help='--help' in sys.argv)
+                    command = input("\nEnter command: ").lower().strip()
+                else:
+                    command = initial_command
+                    initial_command = None
+                    
                 if command in ['--help', '-h']:
                     self.display_menu(show_help=True)
                     continue

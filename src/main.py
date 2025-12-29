@@ -38,6 +38,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description='Android Music Automation')
     parser.add_argument('--device-id', help='Android device ID')
     parser.add_argument('--debug', action='store_true', help='Enable debug logging')
+    parser.add_argument('--command', help='Command to run on start')
     return parser.parse_args()
 
 
@@ -135,7 +136,7 @@ def main():
     try:
         primary_uid, secondary_uid = detect_primary_and_work_profile_user_ids(device_id)
         cli = CLI(device_id, primary_uid, secondary_uid)
-        cli.run()
+        cli.run(args.command)
     except KeyboardInterrupt:
         logger.info("\nExiting gracefully...")
     except Exception as e:
