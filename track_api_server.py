@@ -46,10 +46,29 @@ def receive_track():
 
 @app.route('/api/track', methods=['GET'])
 def get_tracks():
-    """Get current tracks."""
+    """Get current tracks with optional filters."""
+    device_id = request.args.get('device')
+    package = request.args.get('service')  # e.g., 'com.aspiro.tidal', 'com.apple.android.music'
+    state = request.args.get('state')  # e.g., 'PLAYING'
+    
+    filtered = latest_tracks
+    
+    if device_id:
+        filtered = [t for t in filtered if t.get('device_id') == device_id]
+    if package:
+        filtered = [t for t in filtered if t.get('package') == package]
+    if state:
+        filtered = [t for t in filtered if t.get('state') == state]
+    
     return jsonify({
-        "tracks": latest_tracks,
-        "last_update": last_update
+        "tracks": filtered,
+        "last_update": last_update,
+        "filters": {
+            "device": device_id,
+            "service": package,
+            "state": state
+        },
+        "total": len(filtered)
     })
 
 @app.route('/api/health', methods=['GET'])
