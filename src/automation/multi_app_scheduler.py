@@ -400,6 +400,9 @@ class MultiMusicAutomation(MutexMixin):
             if not self.apple_controller.handle_isoclipboard():
                 logger.error("Apple Music iso-clipboard setup failed")
                 return False
+            # Wait for playback to start before minimizing
+            logger.info("Waiting for playback to start...")
+            time.sleep(8)
             if not self.apple_controller.manage_window_state(True):
                 logger.warning("Failed to minimize Apple Music window")
             logger.info("Apple Music initial setup completed")
@@ -438,6 +441,9 @@ class MultiMusicAutomation(MutexMixin):
             if not self.tidal_controller.handle_isoclipboard():
                 logger.error("Tidal Music iso-clipboard setup failed")
                 return False
+            # Wait for playback to start before minimizing
+            logger.info("Waiting for playback to start...")
+            time.sleep(8)
             if not self.tidal_controller.manage_window_state(True):
                 logger.warning("Failed to minimize Tidal Music window")
             logger.info("Tidal Music initial setup completed")
@@ -478,6 +484,10 @@ class MultiMusicAutomation(MutexMixin):
                 logger.error("Beatport initial setup failed")
                 return False
 
+            # Wait for playback to start before minimizing
+            logger.info("Waiting for playback to start...")
+            time.sleep(8)
+            
             # Minimize window
             if not self.beatport_controller.manage_window_state(True):
                 logger.warning("Failed to minimize Beatport window")
