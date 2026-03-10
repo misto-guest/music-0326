@@ -14,7 +14,8 @@ from datetime import datetime
 from typing import List, Dict, Optional
 
 # Configuration
-API_ENDPOINT = os.environ.get("TRACK_API_ENDPOINT", "")
+# Set your API endpoint - or use http://localhost:5000/api/track for local testing
+API_ENDPOINT = os.environ.get("TRACK_API_ENDPOINT", "http://localhost:5000/api/track")
 DEVICE_ID = os.environ.get("ANDROID_SERIAL", "")
 DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
 DRY_RUN = os.environ.get("DRY_RUN", "false").lower() == "true"  # Print only, don't send
