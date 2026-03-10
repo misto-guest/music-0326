@@ -14,8 +14,8 @@ from datetime import datetime
 from typing import List, Dict, Optional
 
 # Configuration
-# Set your API endpoint - or use http://localhost:5000/api/track for local testing
-API_ENDPOINT = os.environ.get("TRACK_API_ENDPOINT", "http://localhost:5000/api/track")
+# Webhook.site URL for testing - replace with your production API
+API_ENDPOINT = os.environ.get("TRACK_API_ENDPOINT", "https://webhook.site/bd4506d2-e6ed-4f8b-9e8a-707d0c664fe7")
 DEVICE_ID = os.environ.get("ANDROID_SERIAL", "")
 DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
 DRY_RUN = os.environ.get("DRY_RUN", "false").lower() == "true"  # Print only, don't send
