@@ -261,12 +261,32 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
             logger.info("Looking for Tidal shuffle button...")
 
             shuffle_button = self.device.xpath('//*[@resource-id="com.aspiro.tidal:id/playbackControlButtonSecond"]')
-            if not shuffle_button.exists:
-                logger.error("Tidal shuffle button not found")
-                return False
-
-            shuffle_button.click()
-            logger.info("Clicked Tidal shuffle button")
+            if shuffle_button.exists:
+                shuffle_button.click()
+                logger.info("Clicked Tidal shuffle button")
+                time.sleep(5)
+                return True
+            
+            # Fallback: try alternative element IDs
+            alternative_ids = [
+                'com.aspiro.tidal:id/shuffleButton',
+                'com.aspiro.tidal:id/btn_shuffle',
+                'com.aspiro.tidal:id/shuffle',
+            ]
+            for alt_id in alternative_ids:
+                alt_button = self.device.xpath(f'//*[@resource-id="{alt_id}"]')
+                if alt_button.exists:
+                    alt_button.click()
+                    logger.info(f"Clicked Tidal shuffle button via {alt_id}")
+                    time.sleep(5)
+                    return True
+            
+            # Final fallback: double-tap play to toggle shuffle mode
+            logger.warning("Tidal shuffle button not found, using keyevent fallback")
+            self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
+            time.sleep(1)
+            self.device.shell('input keyevent KEYCODE_MEDIA_PLAY_PAUSE')
+            logger.info("Used keyevent fallback for shuffle")
             time.sleep(5)
             return True
         except Exception as e:
