@@ -754,17 +754,33 @@ class MultiMusicAutomation(MutexMixin):
         if not controllers_available:
             logger.error("No music controllers available")
             return False
-
-        # Initial setups
+        
+        # Initial setups - don't fail all if one fails, just skip that app
         if self.youtube_controller and not self._youtube_initial_setup():
-            return False
+            logger.warning("YouTube initial setup failed, disabling YouTube automation")
+            self.youtube_controller = None
         if self.apple_controller and not self._apple_initial_setup():
-            return False
+            logger.warning("Apple initial setup failed, disabling Apple automation")
+            self.apple_controller = None
         if self.amazon_controller and not self._amazon_initial_setup():
-            return False
+            logger.warning("Amazon initial setup failed, disabling Amazon automation")
+            self.amazon_controller = None
         if self.tidal_controller and not self._tidal_initial_setup():
-            return False
+            logger.warning("Tidal initial setup failed, disabling Tidal automation")
+            self.tidal_controller = None
         if self.beatport_controller and not self._beatport_initial_setup():
+            logger.warning("Beatport initial setup failed, disabling Beatport automation")
+            self.beatport_controller = None
+        
+        # Check if at least one controller is available after setup
+        if not any([
+            self.youtube_controller,
+            self.apple_controller,
+            self.amazon_controller,
+            self.tidal_controller,
+            self.beatport_controller
+        ]):
+            logger.error("All controllers failed initial setup")
             return False
 
         self.running = True
