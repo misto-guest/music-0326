@@ -40,3 +40,7 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+
+# pm2 related
+devices.list
+ecosystem.config.js

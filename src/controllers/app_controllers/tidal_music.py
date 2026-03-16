@@ -128,7 +128,7 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error ensuring screen active: {e}")
             return False
 
-    def handle_isoclipboard(self) -> bool:
+    def handle_isoclipboard(self, user_id: int) -> bool:
         """Handle IsoClipboard automation for Tidal."""
         try:
             logger.info(f"Initial rotation settings: {self.get_rotation_settings()}")
@@ -136,12 +136,12 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
                 logger.error("Failed to disable rotation")
                 return False
 
-            if not self._start_isoclipboard_safely():
+            if not self._start_isoclipboard_safely(user_id):
                 if self.needs_restart("IsoClipboard"):
                     logger.info("Retrying IsoClipboard after force-close")
                     self.clear_restart_flag("IsoClipboard")
                     time.sleep(2)
-                    if not self._start_isoclipboard_safely():
+                    if not self._start_isoclipboard_safely(user_id):
                         return False
                 else:
                     return False
@@ -153,7 +153,7 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
                 logger.info("Restarting Tidal after force-close")
                 self.clear_restart_flag("Tidal Music")
                 time.sleep(2)
-                if not self.prepare_for_action():
+                if not self.prepare_for_action(user_id):
                     return False
 
             if not self._handle_shuffle_and_play():
@@ -170,7 +170,7 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error with IsoClipboard: {e}")
             return False
 
-    def _start_isoclipboard_safely(self) -> bool:
+    def _start_isoclipboard_safely(self, user_id: int) -> bool:
         max_attempts = 3
         for attempt in range(max_attempts):
             logger.info(f"Tidal: Starting IsoClipboard attempt {attempt + 1}/{max_attempts}")
@@ -187,7 +187,7 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
 
             self.device.app_stop(self.isoclipboard_package)
             time.sleep(1)
-            self.device.shell(f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top')
+            self.device.shell(f'am start --user {user_id} -W -n {self.isoclipboard_package}/.MainActivity --activity-single-top')
             time.sleep(3)
 
             if not self._verify_rotation_disabled():
@@ -214,7 +214,7 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
                 time.sleep(1)
                 self.device.press("home")
                 time.sleep(1)
-                self.device.shell(f'am start -W {self.isoclipboard_package}/.MainActivity --activity-single-top')
+                self.device.shell(f'am start --user {user_id} -W -n {self.isoclipboard_package}/.MainActivity --activity-single-top')
                 time.sleep(2)
 
             logger.error(f"Tidal: Failed to bring IsoClipboard to foreground on attempt {attempt + 1}")
@@ -307,7 +307,7 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
         except Exception as e:
             logger.error(f"Error ensuring mini_player state: {e}")
 
-    def prepare_for_action(self) -> bool:
+    def prepare_for_action(self, user_id: int) -> bool:
         """Streamlined preparation before performing an action."""
         try:
             # Check if app needs restart due to popup handling
@@ -315,33 +315,33 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
                 logger.info("Restarting Tidal after force-close")
                 self.clear_restart_flag("Tidal Music")
                 time.sleep(1)
-                return self.start_app()
+                return self.start_app(user_id)
 
             if not self.ensure_screen_active():
                 logger.error("Failed to ensure screen active before action")
                 return False
 
-            if self._verify_app_running():
+            if self._verify_app_running(user_id):
                 return True
 
-            if not self.start_app():
+            if not self.start_app(user_id):
                 return False
 
             time.sleep(1)
-            return self._verify_app_running()
+            return self._verify_app_running(user_id)
 
         except Exception as e:
             logger.error(f"Error preparing for action: {e}")
             return False
 
-    def play_pause(self) -> bool:
+    def play_pause(self, user_id: int) -> bool:
         """Toggle play/pause with a max 15-second wait for Tidal readiness."""
         start_time = time.time()
         try:
             logger.info("Attempting play/pause...")
             prepared = False
             while time.time() - start_time < 15:
-                if self.prepare_for_action():
+                if self.prepare_for_action(user_id):
                     prepared = True
                     break
                 time.sleep(2)
@@ -371,14 +371,14 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
             except Exception:
                 return False
 
-    def next_track(self) -> bool:
+    def next_track(self, user_id: int) -> bool:
         """Skip to next track with a max 15-second wait for Tidal readiness."""
         start_time = time.time()
         try:
             logger.info("Attempting next track...")
             prepared = False
             while time.time() - start_time < 15:
-                if self.prepare_for_action():
+                if self.prepare_for_action(user_id):
                     prepared = True
                     break
                 time.sleep(2)
@@ -408,14 +408,14 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
             except Exception:
                 return False
 
-    def previous_track(self) -> bool:
+    def previous_track(self, user_id: int) -> bool:
         """Go to previous track with a max 15-second wait for Tidal readiness."""
         start_time = time.time()
         try:
             logger.info("Tidal: Attempting previous track...")
             prepared = False
             while time.time() - start_time < 15:
-                if self.prepare_for_action():
+                if self.prepare_for_action(user_id):
                     prepared = True
                     break
                 time.sleep(2)
@@ -446,14 +446,14 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
                 logger.error(f"Tidal: Fallback keyevent failed: {ex}")
                 return False
 
-    def like_current_song(self) -> bool:
+    def like_current_song(self, user_id: int) -> bool:
         """Like current song with a max 15-second wait for Tidal readiness."""
         start_time = time.time()
         try:
             logger.info("Starting like song action...")
             prepared = False
             while time.time() - start_time < 15:
-                if self.prepare_for_action():
+                if self.prepare_for_action(user_id):
                     prepared = True
                     break
                 time.sleep(2)
@@ -492,20 +492,14 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error liking current song: {e}")
             return False
 
-    def _verify_app_running(self) -> bool:
+    def _verify_app_running(self, user_id: int) -> bool:
         """Optimized verification of Tidal running state."""
         try:
-            if self.device(packageName=self.package_name).exists:
-                logger.info("Found Tidal UI elements")
-                return True
-
-            current_app = self.device.app_current()
-            if current_app.get('package') == self.package_name:
-                logger.info("Tidal is current app")
-                return True
-
-            if self.package_name in self.device.shell('dumpsys activity activities | grep -i "mResumedActivity"'):
-                logger.info("Tidal found in resumed activities")
+            result = self.device.shell("dumpsys activity recents | grep " + self.package_name)
+            command_output = result.output
+            
+            if f"u{user_id}" in command_output:
+                logger.info(f"Tidal is current app for user {user_id}")
                 return True
 
             return False
@@ -513,14 +507,14 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error verifying app state: {e}")
             return False
 
-    def stop_app(self) -> bool:
+    def stop_app(self, user_id: int) -> bool:
         """Stop Tidal app and restore rotation state if desired at session end."""
         try:
-            self.device.app_stop(self.package_name)
+            self.device.shell(f"am force-stop --user {user_id} {self.package_name}")
             time.sleep(1)
-            if self.is_running():
+            if self.is_running(user_id):
                 logger.warning("App still running after stop attempt, trying force-stop")
-                return self.force_stop()
+                return self.force_stop(user_id)
 
             if self.initial_rotation_state:
                 self._restore_rotation_state(self.initial_rotation_state)
@@ -530,7 +524,7 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error stopping Tidal: {e}")
             return False
 
-    def start_app(self) -> bool:
+    def start_app(self, user_id: int) -> bool:
         """Start Tidal app using am start command without restoring rotation immediately."""
         try:
             logger.info("Starting Tidal...")
@@ -539,17 +533,17 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
 
             logger.info("Attempting start with am start command...")
             self.device.shell(
-                f'am start -W -n {self.package_name}/com.aspiro.wamp.LoginFragmentActivity --activity-single-top'
+                f'am start --user {user_id} -W -n {self.package_name}/com.aspiro.wamp.LoginFragmentActivity --activity-single-top'
             )
             time.sleep(2)
 
-            if self._verify_app_running():
+            if self._verify_app_running(user_id):
                 logger.info("Tidal started successfully with am start command")
                 return True
 
             logger.info("am start command did not launch Tidal properly, retrying...")
             time.sleep(1)
-            if self._verify_app_running():
+            if self._verify_app_running(user_id):
                 logger.info("Tidal started successfully after retry")
                 return True
 
@@ -560,18 +554,18 @@ class TidalMusicController(BaseController, PopupMonitorMixin):
             logger.error(f"Error starting Tidal: {e}")
             return False
 
-    def is_running(self) -> bool:
+    def is_running(self, user_id: int) -> bool:
         """Check if Tidal is running with improved detection."""
         try:
-            return self._verify_app_running()
+            return self._verify_app_running(user_id)
         except Exception as e:
             logger.error(f"Error checking if Tidal is running: {e}")
             return False
 
-    def force_stop(self) -> bool:
+    def force_stop(self, user_id: int) -> bool:
         """Force stop Tidal."""
         try:
-            self.device.app_stop(self.package_name)
+            self.device.shell(f"am force-stop --user {user_id} {self.package_name}")
             time.sleep(1)
             return True
         except Exception as e:

@@ -44,14 +44,21 @@ class DeviceController:
             if package_name.startswith(base_pkg):
                 return f"{base_name} Clone (Package: {package_name})"
         return f"Unknown App (Package: {package_name})"
-
-    def check_running_music_apps(self) -> Optional[str]:
+    
+    def check_running_music_apps(self, primary_user_id: int, secondary_user_id: int) -> Optional[str]:
         """Check which music apps are running."""
         try:
             running_apps = []
             for controller in self.app_controllers.values():
-                if controller.is_running():
-                    running_apps.append(controller.app_name)
+                try:
+                    if controller.is_running(primary_user_id):
+                        running_apps.append(f"{controller.app_name} (User {primary_user_id})")
+                    if controller.is_running(secondary_user_id):
+                        running_apps.append(f"{controller.app_name} (User {secondary_user_id})")
+                except TypeError:
+                    if controller.is_running():
+                        running_apps.append(controller.app_name)
+                
             if running_apps:
                 logger.info("Running music apps: %s", running_apps)
             else:
@@ -61,14 +68,22 @@ class DeviceController:
             logger.error("Error checking running apps: %s", e)
             return None
 
-    def close_music_recent_apps(self):
+    def close_music_recent_apps(self, primary_user_id: int, secondary_user_id: int):
         """Close only music-related recent apps."""
         try:
             for controller in self.app_controllers.values():
-                if controller.is_running():
-                    logger.info(f"Closing {controller.app_name}")
-                    controller.stop_app()
-            self.check_running_music_apps()
+                try:
+                    if controller.is_running(primary_user_id):
+                        logger.info(f"Closing {controller.app_name} (User {primary_user_id})")
+                        controller.stop_app(primary_user_id)
+                    if controller.is_running(secondary_user_id):
+                        logger.info(f"Closing {controller.app_name} (User {secondary_user_id})")
+                        controller.stop_app(secondary_user_id)
+                except TypeError:
+                    if controller.is_running():
+                        logger.info(f"Closing {controller.app_name}")
+                        controller.stop_app()
+            self.check_running_music_apps(primary_user_id, secondary_user_id)
         except Exception as e:
             logger.error("Error closing music apps: %s", e)
 
