@@ -39,7 +39,6 @@ def parse_arguments():
     parser.add_argument('--device-id', help='Android device ID')
     parser.add_argument('--debug', action='store_true', help='Enable debug logging')
     parser.add_argument('--command', help='Command to run on start')
-    parser.add_argument('--command', help='Command to run on start')
     return parser.parse_args()
 
 
